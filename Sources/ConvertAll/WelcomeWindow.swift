@@ -37,15 +37,9 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
 }
 
 private struct WelcomeView: View {
+    @ObservedObject private var updater = Updater.shared
+    @StateObject private var extras = ExtrasModel()
     @State private var dropTargeted = false
-
-    private let missingEncoders = [ImageFormat.webp, .avif].filter { !ImageConverter.canWrite($0) }
-
-    private var brewHint: String {
-        let names = missingEncoders.map(\.displayName).joined(separator: " & ")
-        let packages = missingEncoders.map { $0 == .webp ? "webp" : "libavif" }.joined(separator: " ")
-        return "For \(names) export, run  `brew install \(packages)`"
-    }
 
     var body: some View {
         VStack(spacing: 18) {
@@ -55,13 +49,14 @@ private struct WelcomeView: View {
                     .frame(width: 72, height: 72)
                 Text("ConvertAll")
                     .font(.system(size: 22, weight: .bold, design: .rounded))
-                Text("Convert any image in two clicks.")
+                Text("Images, video, audio and documents — converted in two clicks.")
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
             .padding(.top, 12)
 
             VStack(alignment: .leading, spacing: 12) {
-                Step(number: 1, text: "Right-click an image in Finder.")
+                Step(number: 1, text: "Right-click a file in Finder.")
                 Step(number: 2, text: "Choose **Open With › ConvertAll**\nor **Quick Actions › Convert with ConvertAll**.")
                 Step(number: 3, text: "Type or pick a format. The new file appears right next to the original.")
             }
@@ -69,28 +64,86 @@ private struct WelcomeView: View {
 
             dropZone
 
-            VStack(spacing: 6) {
-                Text("Supported images")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Text(ImageFormat.allCases.map(\.displayName).joined(separator: "  ·  "))
-                    .font(.system(size: 11, design: .rounded))
+            extrasBox
+
+            HStack(spacing: 8) {
+                Text("Version \(updater.currentVersion)")
                     .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-                if !missingEncoders.isEmpty {
-                    Text(.init(brewHint))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .textSelection(.enabled)
-                        .padding(.top, 2)
-                }
+                Spacer()
+                updateStatus
             }
+            .font(.system(size: 11))
         }
         .padding(.horizontal, 28)
-        .padding(.bottom, 24)
+        .padding(.bottom, 20)
         .padding(.top, 16)
-        .frame(width: 420)
+        .frame(width: 440)
+        .onAppear { extras.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            extras.refresh()  // picks up a fresh LibreOffice install
+        }
+    }
+
+    // MARK: Extras
+
+    private var extrasBox: some View {
+        VStack(spacing: 0) {
+            ExtraRow(
+                symbol: "film", title: "Media engine",
+                detail: "Video, audio, GIF ↔ video, WebP & AVIF export",
+                installed: extras.mediaInstalled
+            ) {
+                if let p = extras.mediaProgress {
+                    ProgressView(value: p).frame(width: 90)
+                } else {
+                    Button("Download · \(MediaPack.downloadSizeText)") { extras.installMedia() }
+                        .controlSize(.small)
+                }
+            }
+            Divider().padding(.leading, 40)
+            ExtraRow(
+                symbol: "tablecells", title: "LibreOffice",
+                detail: "Spreadsheets & presentations (free)",
+                installed: extras.officeInstalled
+            ) {
+                Button("Get LibreOffice") { NSWorkspace.shared.open(OfficeEngine.downloadPage) }
+                    .controlSize(.small)
+            }
+            if let error = extras.error {
+                Text(error).font(.system(size: 11)).foregroundStyle(.red).padding(.bottom, 8)
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.04)))
+    }
+
+    @ViewBuilder private var updateStatus: some View {
+        switch updater.state {
+        case .checking:
+            ProgressView().controlSize(.mini)
+            Text("Checking…").foregroundStyle(.secondary)
+        case .downloading(let p):
+            ProgressView(value: p).frame(width: 80)
+            Text("Downloading update…").foregroundStyle(.secondary)
+        case .installing:
+            Text("Installing… ConvertAll will reopen").foregroundStyle(.secondary)
+        case .failed(let message):
+            Text(message).foregroundStyle(.red).lineLimit(1)
+            Button("Retry") { updater.check(userInitiated: true) }.controlSize(.small)
+        default:
+            if let update = updater.available {
+                Text("Version \(update.version.description) is available").foregroundStyle(.secondary)
+                Button("Update") { updater.install() }
+                    .controlSize(.small)
+                    .keyboardShortcut(.defaultAction)
+            } else {
+                if updater.state == .upToDate {
+                    Label("Up to date", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                }
+                Button("Check for Updates") { updater.check(userInitiated: true) }
+                    .controlSize(.small)
+            }
+        }
     }
 
     private var dropZone: some View {
@@ -98,9 +151,9 @@ private struct WelcomeView: View {
             Image(systemName: "photo.on.rectangle.angled")
                 .font(.system(size: 26))
                 .foregroundStyle(dropTargeted ? Color.accentColor : .secondary)
-            Text("Drop images here to try it")
+            Text("Drop files here to try it")
                 .font(.system(size: 13, weight: .medium))
-            Button("Choose Images…", action: choose)
+            Button("Choose Files…", action: choose)
                 .controlSize(.small)
         }
         .frame(maxWidth: .infinity)
@@ -141,7 +194,7 @@ private struct WelcomeView: View {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.image]
+        panel.allowedContentTypes = FileFormat.allCases.flatMap(\.typeIdentifiers).compactMap { UTType($0) }
         panel.prompt = "Convert"
         guard panel.runModal() == .OK else { return }
         let urls = panel.urls
@@ -156,6 +209,65 @@ private final class URLCollector: @unchecked Sendable {
 
     var urls: [URL] { lock.lock(); defer { lock.unlock() }; return storage }
     func append(_ url: URL) { lock.lock(); storage.append(url); lock.unlock() }
+}
+
+/// Install state of the optional engines, for the welcome window.
+private final class ExtrasModel: ObservableObject {
+    @Published var mediaInstalled = false
+    @Published var officeInstalled = false
+    @Published var mediaProgress: Double?
+    @Published var error: String?
+
+    func refresh() {
+        mediaInstalled = MediaEngine.ffmpegURL != nil
+        officeInstalled = OfficeEngine.sofficeURL != nil
+    }
+
+    func installMedia() {
+        mediaProgress = 0
+        error = nil
+        let box = WeakBox(self)
+        Task { @MainActor in
+            do {
+                try await MediaPack.install { p in DispatchQueue.main.async { box.value?.mediaProgress = p } }
+            } catch {
+                self.error = "Download failed: \(error.localizedDescription)"
+            }
+            mediaProgress = nil
+            refresh()
+        }
+    }
+}
+
+private struct ExtraRow<Action: View>: View {
+    let symbol: String
+    let title: String
+    let detail: String
+    let installed: Bool
+    @ViewBuilder let action: () -> Action
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 15))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 20)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 12, weight: .semibold))
+                Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            if installed {
+                Label("Installed", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.green)
+            } else {
+                action()
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
 }
 
 private struct Step: View {

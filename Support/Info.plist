@@ -19,7 +19,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>0.2.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>LSApplicationCategoryType</key>
@@ -34,12 +34,12 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 ConvertAll</string>
 
-	<!-- Right-click › Open With › ConvertAll for every supported image type. -->
+	<!-- Right-click › Open With › ConvertAll for every supported file type. -->
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
 			<key>CFBundleTypeName</key>
-			<string>Image</string>
+			<string>Convertible file</string>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
 			<key>LSHandlerRank</key>
@@ -47,9 +47,13 @@
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>public.image</string>
+				<string>public.movie</string>
+				<string>public.audio</string>
+				<string>public.audiovisual-content</string>
 				<string>public.jpeg</string>
 				<string>public.png</string>
 				<string>org.webmproject.webp</string>
+				<string>public.webp</string>
 				<string>public.heic</string>
 				<string>public.heif</string>
 				<string>public.avif</string>
@@ -65,11 +69,39 @@
 				<string>org.qoiformat.qoi</string>
 				<string>com.ilm.openexr-image</string>
 				<string>public.svg-image</string>
+				<string>public.mpeg-4</string>
+				<string>com.apple.m4v-video</string>
+				<string>com.apple.quicktime-movie</string>
+				<string>org.webmproject.webm</string>
+				<string>org.matroska.mkv</string>
+				<string>public.avi</string>
+				<string>public.mp3</string>
+				<string>com.microsoft.waveform-audio</string>
+				<string>org.xiph.flac</string>
+				<string>public.aac-audio</string>
+				<string>com.apple.m4a-audio</string>
+				<string>org.xiph.ogg-audio</string>
+				<string>org.xiph.ogg</string>
+				<string>org.xiph.opus</string>
+				<string>com.adobe.pdf</string>
+				<string>org.openxmlformats.wordprocessingml.document</string>
+				<string>com.microsoft.word.doc</string>
+				<string>org.oasis-open.opendocument.text</string>
+				<string>public.rtf</string>
+				<string>public.plain-text</string>
+				<string>public.html</string>
+				<string>org.openxmlformats.spreadsheetml.sheet</string>
+				<string>com.microsoft.excel.xls</string>
+				<string>org.oasis-open.opendocument.spreadsheet</string>
+				<string>public.comma-separated-values-text</string>
+				<string>org.openxmlformats.presentationml.presentation</string>
+				<string>com.microsoft.powerpoint.ppt</string>
+				<string>org.oasis-open.opendocument.presentation</string>
 			</array>
 		</dict>
 	</array>
 
-	<!-- macOS doesn't know QOI or every Netpbm flavour; teach it. -->
+	<!-- Types macOS may not know (QOI, Netpbm, Matroska, WebM, Ogg, Opus, FLAC); the system's own declaration wins when it has one. -->
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>
@@ -110,6 +142,107 @@
 				</array>
 			</dict>
 		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>org.matroska.mkv</string>
+			<key>UTTypeDescription</key>
+			<string>Matroska video</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.movie</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mkv</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>video/x-matroska</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>org.webmproject.webm</string>
+			<key>UTTypeDescription</key>
+			<string>WebM video</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.movie</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>webm</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>video/webm</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>org.xiph.ogg-audio</string>
+			<key>UTTypeDescription</key>
+			<string>Ogg Vorbis audio</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.audio</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ogg</string>
+					<string>oga</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>audio/ogg</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>org.xiph.opus</string>
+			<key>UTTypeDescription</key>
+			<string>Opus audio</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.audio</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>opus</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>audio/opus</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>org.xiph.flac</string>
+			<key>UTTypeDescription</key>
+			<string>FLAC audio</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.audio</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>flac</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>audio/flac</string>
+			</dict>
+		</dict>
 	</array>
 
 	<!-- Right-click › Quick Actions (Services) › Convert with ConvertAll. -->
@@ -130,6 +263,13 @@
 			<key>NSSendFileTypes</key>
 			<array>
 				<string>public.image</string>
+				<string>public.audiovisual-content</string>
+				<string>public.audio</string>
+				<string>com.adobe.pdf</string>
+				<string>public.composite-content</string>
+				<string>public.text</string>
+				<string>public.spreadsheet</string>
+				<string>public.presentation</string>
 			</array>
 		</dict>
 	</array>

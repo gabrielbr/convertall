@@ -90,21 +90,35 @@ struct ChipView: View {
     private var picker: some View {
         VStack(alignment: .leading, spacing: 10) {
             searchField
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: ChipModel.columns),
-                spacing: 6
-            ) {
-                ForEach(model.formats) { format in
-                    FormatPill(
-                        format: format,
-                        isHighlighted: model.highlighted == format,
-                        isMatch: model.isMatch(format),
-                        isAvailable: model.isAvailable(format),
-                        hint: model.isAvailable(format) ? format.blurb : ImageConverter.installHint(for: format)
-                    ) {
-                        model.convert(format)
-                    } onHover: {
-                        model.highlighted = format
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(model.sections) { section in
+                    VStack(alignment: .leading, spacing: 4) {
+                        if model.sections.count > 1 {
+                            Text(section.category.title.uppercased())
+                                .font(.system(size: 9.5, weight: .semibold))
+                                .tracking(0.6)
+                                .foregroundStyle(.tertiary)
+                                .padding(.leading, 2)
+                        }
+                        LazyVGrid(
+                            columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: ChipModel.columns),
+                            spacing: 6
+                        ) {
+                            ForEach(section.formats) { format in
+                                let requirement = model.requirement(for: format)
+                                FormatPill(
+                                    format: format,
+                                    isHighlighted: model.highlighted == format,
+                                    isMatch: model.isMatch(format),
+                                    needsDownload: requirement != .ready,
+                                    hint: hint(for: format, requirement)
+                                ) {
+                                    model.convert(format)
+                                } onHover: {
+                                    model.highlighted = format
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -116,9 +130,31 @@ struct ChipView: View {
                     .lineLimit(1)
                     .animation(nil, value: model.highlighted)
                 Spacer(minLength: 4)
-                KeyHint(symbol: "↩", label: "Convert")
-                KeyHint(symbol: "⌘↩", label: "& Reveal")
+                if let update = model.update {
+                    Button { model.installUpdate() } label: {
+                        Label("Update to \(update.version.description)", systemImage: "arrow.down.circle.fill")
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                    .help("A new version of ConvertAll is available. Installs and relaunches in a few seconds.")
+                } else {
+                    KeyHint(symbol: "↩", label: "Convert")
+                    KeyHint(symbol: "⌘↩", label: "& Reveal")
+                }
             }
+        }
+        .frame(minHeight: 170, alignment: .top)
+    }
+
+    private func hint(for format: FileFormat, _ requirement: Requirement) -> String {
+        switch requirement {
+        case .ready: format.blurb
+        case .mediaEngine: "\(format.blurb). Downloads the free media engine once (\(MediaPack.downloadSizeText))."
+        case .libreOffice: "\(format.blurb). Needs LibreOffice (free)."
         }
     }
 
@@ -146,31 +182,57 @@ struct ChipView: View {
         )
     }
 
-    // MARK: Converting / done / failed
+    // MARK: Engine prompts / converting / done / failed
 
     @ViewBuilder private var overlay: some View {
         switch model.phase {
         case .picking:
             EmptyView()
 
-        case .converting(let format, let done, let total):
-            VStack(spacing: 10) {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Converting to \(format.displayName)…")
-                        .font(.system(size: 13, weight: .medium))
-                }
-                if total > 1 {
-                    ProgressView(value: Double(done), total: Double(total))
-                        .progressViewStyle(.linear)
-                        .frame(width: 180)
-                    Text("\(done) of \(total)")
-                        .font(.system(size: 11).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
+        case .needs(let format, .mediaEngine):
+            ResultMessage(
+                symbol: "shippingbox.fill", tint: .accentColor,
+                title: "One-time download",
+                detail: "\(format.displayName) uses FFmpeg, a free media engine (\(MediaPack.downloadSizeText)). It's saved once and works offline afterwards."
+            ) {
+                Button("Download & Convert") { model.installEngineAndConvert() }
+                    .keyboardShortcut(.defaultAction)
+                Button("Back") { model.backToPicking() }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .transition(.opacity)
+
+        case .needs(let format, _):
+            ResultMessage(
+                symbol: "tablecells.fill", tint: .accentColor,
+                title: "LibreOffice needed",
+                detail: "Spreadsheets and presentations convert to \(format.displayName) with LibreOffice, free from libreoffice.org. Install it, then try again."
+            ) {
+                Button("Get LibreOffice") { model.getLibreOffice() }
+                    .keyboardShortcut(.defaultAction)
+                Button("Try Again") { model.convert(format) }
+                Button("Back") { model.backToPicking() }
+            }
+
+        case .installingEngine(let format, let progress):
+            ProgressPanel(
+                title: "Downloading media engine…",
+                detail: "Then converting to \(format.displayName)",
+                progress: progress
+            )
+
+        case .converting(let format, let progress, let done, let total):
+            ProgressPanel(
+                title: "Converting to \(format.displayName)…",
+                detail: total > 1 ? "\(done) of \(total)" : nil,
+                progress: progress,
+                onCancel: model.cancelConversion
+            )
+
+        case .updating:
+            ProgressPanel(
+                title: "Updating ConvertAll…",
+                detail: updateDetail,
+                progress: { if case .downloading(let p) = model.updateState { return p }; return 0 }()
+            )
 
         case .finished(let format, let outputs, let failures):
             if outputs.isEmpty {
@@ -187,7 +249,7 @@ struct ChipView: View {
                     symbol: "checkmark.circle.fill", tint: .green,
                     title: outputs.count == 1
                         ? outputs[0].lastPathComponent
-                        : "\(outputs.count) images converted to \(format.displayName)",
+                        : "\(outputs.count) files converted to \(format.displayName)",
                     detail: failures.isEmpty
                         ? "Saved next to the original · drag me anywhere"
                         : "\(failures.count) couldn't be converted"
@@ -201,9 +263,17 @@ struct ChipView: View {
             }
 
         case .unsupported(let message):
-            ResultMessage(symbol: "photo.badge.exclamationmark", tint: .secondary, title: "Nothing to convert", detail: message) {
+            ResultMessage(symbol: "questionmark.folder.fill", tint: .secondary, title: "Nothing to convert", detail: message) {
                 Button("OK") { model.onClose() }.keyboardShortcut(.defaultAction)
             }
+        }
+    }
+
+    private var updateDetail: String {
+        switch model.updateState {
+        case .failed(let message): message
+        case .installing: "Installing — ConvertAll will reopen"
+        default: model.update.map { "Version \($0.version.description)" } ?? ""
         }
     }
 }
@@ -211,11 +281,11 @@ struct ChipView: View {
 // MARK: - Pieces
 
 private struct FormatPill: View {
-    let format: ImageFormat
+    let format: FileFormat
     let isHighlighted: Bool
     let isMatch: Bool
-    let isAvailable: Bool
-    let hint: String?
+    let needsDownload: Bool
+    let hint: String
     let action: () -> Void
     let onHover: () -> Void
 
@@ -226,38 +296,75 @@ private struct FormatPill: View {
             HStack(spacing: 3) {
                 Text(format.displayName)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                if !isAvailable {
+                if needsDownload {
                     Image(systemName: "arrow.down.circle")
                         .font(.system(size: 9, weight: .semibold))
+                        .opacity(0.7)
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 30)
-            .foregroundStyle(isHighlighted && isAvailable ? Color.white : Color.primary)
+            .foregroundStyle(isHighlighted ? Color.white : Color.primary)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(fill)
+                    .fill(isHighlighted ? Color.accentColor : Color.primary.opacity(hovering ? 0.10 : 0.05))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(isHighlighted && !isAvailable ? Color.accentColor : Color.primary.opacity(0.07),
-                                  lineWidth: isHighlighted && !isAvailable ? 1.5 : 0.5)
+                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5)
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableStyle())
-        .opacity(!isMatch ? 0.25 : (isAvailable ? 1 : 0.5))
+        .opacity(isMatch ? 1 : 0.25)
         .animation(.easeOut(duration: 0.12), value: isHighlighted)
         .animation(.easeOut(duration: 0.12), value: isMatch)
         .onHover { inside in
             hovering = inside
             if inside { onHover() }
         }
-        .help(hint ?? "")
+        .help(hint)
     }
+}
 
-    private var fill: Color {
-        if isHighlighted && isAvailable { return .accentColor }
-        return Color.primary.opacity(hovering ? 0.10 : 0.05)
+/// Determinate progress (spinner until the first report) with an optional Cancel.
+private struct ProgressPanel: View {
+    let title: String
+    let detail: String?
+    let progress: Double
+    var onCancel: (() -> Void)?
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                if progress <= 0 { ProgressView().controlSize(.small) }
+                Text(title).font(.system(size: 13, weight: .medium))
+            }
+            if progress > 0 {
+                ProgressView(value: progress)
+                    .progressViewStyle(.linear)
+                    .frame(width: 200)
+                    .animation(.linear(duration: 0.2), value: progress)
+            }
+            HStack(spacing: 6) {
+                if progress > 0 { Text("\(Int(progress * 100))%").monospacedDigit() }
+                if let detail, !detail.isEmpty {
+                    if progress > 0 { Text("·") }
+                    Text(detail)
+                }
+            }
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+            .multilineTextAlignment(.center)
+            if let onCancel {
+                Button("Cancel", action: onCancel)
+                    .controlSize(.small)
+                    .help("Stop converting  (esc)")
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .transition(.opacity)
     }
 }
 
@@ -310,7 +417,7 @@ private struct ResultMessage<Actions: View>: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .lineLimit(2)
+                .lineLimit(3)
             HStack(spacing: 8) { actions() }
                 .controlSize(.small)
                 .padding(.top, 2)

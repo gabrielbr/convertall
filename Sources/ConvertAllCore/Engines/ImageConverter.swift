@@ -1,30 +1,12 @@
-#if canImport(ImageIO) && canImport(CoreGraphics)
+#if os(macOS)
+import AppKit
 import CoreGraphics
 import Foundation
 import ImageIO
-#if canImport(AppKit)
-import AppKit
-#endif
-
-public enum ConversionError: LocalizedError {
-    case unreadable(String)
-    case encoderUnavailable(ImageFormat)
-    case writeFailed(String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .unreadable(let name): "Couldn't read “\(name)” as an image."
-        case .encoderUnavailable(let format):
-            "\(format.displayName) export isn't available on this Mac. "
-                + (ImageConverter.installHint(for: format) ?? "")
-        case .writeFailed(let detail): "Saving failed: \(detail)"
-        }
-    }
-}
 
 /// Quick facts shown in the chip header.
-public struct ImageInfo: Sendable {
-    public let format: ImageFormat?
+public struct FileInfo: Sendable {
+    public let format: FileFormat?
     public let pixelWidth: Int?
     public let pixelHeight: Int?
     public let byteCount: Int?
@@ -35,8 +17,8 @@ public struct ImageInfo: Sendable {
 /// Encoder resolution order:
 ///   1. Pure-Swift codecs (QOI, PPM, TGA) — always available.
 ///   2. ImageIO, if this macOS can write the format (JPEG, PNG, HEIC, TIFF, GIF, BMP, ICO, EXR, …).
-///   3. A Homebrew command-line encoder for formats ImageIO can only read (WebP via
-///      `cwebp`, AVIF via `avifenc`).
+///   3. For formats macOS can only read (WebP, AVIF): Homebrew `cwebp`/`avifenc`,
+///      or the FFmpeg media engine (which ships libwebp and AV1).
 public enum ImageConverter {
     public static let defaultQuality = 0.85
 
@@ -44,11 +26,13 @@ public enum ImageConverter {
         case builtIn
         case imageIO(typeIdentifier: String)
         case external(executable: URL, arguments: (_ input: String, _ output: String, _ quality: Int) -> [String])
+        case ffmpeg
     }
 
     private static let imageIOWritable = Set((CGImageDestinationCopyTypeIdentifiers() as? [String]) ?? [])
 
-    static func encoder(for format: ImageFormat) -> Encoder? {
+    static func encoder(for format: FileFormat) -> Encoder? {
+        guard format.category == .image else { return nil }
         if format.hasBuiltInCodec { return .builtIn }
         if let uti = format.typeIdentifiers.first(where: imageIOWritable.contains) {
             return .imageIO(typeIdentifier: uti)
@@ -64,21 +48,18 @@ public enum ImageConverter {
             }
         default: break
         }
+        if (format == .webp || format == .avif), MediaEngine.ffmpegURL != nil { return .ffmpeg }
         return nil
     }
 
-    public static func canWrite(_ format: ImageFormat) -> Bool { encoder(for: format) != nil }
+    public static func canWrite(_ format: FileFormat) -> Bool { encoder(for: format) != nil }
 
-    /// Shown on a dimmed pill so users know how to unlock it.
-    public static func installHint(for format: ImageFormat) -> String? {
-        switch format {
-        case .webp: "Install the encoder with: brew install webp"
-        case .avif: "Install the encoder with: brew install libavif"
-        default: nil
-        }
+    /// WebP/AVIF can be unlocked by the media engine; everything else is always writable.
+    public static func needsMediaEngine(_ format: FileFormat) -> Bool {
+        (format == .webp || format == .avif) && !canWrite(format)
     }
 
-    private static func findTool(_ name: String) -> URL? {
+    static func findTool(_ name: String) -> URL? {
         ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
             .map { URL(fileURLWithPath: $0).appendingPathComponent(name) }
             .first { FileManager.default.isExecutableFile(atPath: $0.path) }
@@ -86,24 +67,18 @@ public enum ImageConverter {
 
     // MARK: - Inspecting
 
-    public static func sourceFormat(of url: URL) -> ImageFormat? {
-        if let f = ImageFormat(url: url) { return f }
-        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let uti = CGImageSourceGetType(src) as String?
-        else { return nil }
-        return ImageFormat(typeIdentifier: uti)
-    }
-
-    public static func info(for url: URL) -> ImageInfo {
+    public static func info(for url: URL) -> FileInfo {
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize
+        let format = Converter.sourceFormat(of: url)
         var w: Int?, h: Int?
-        if let src = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+        if format?.category == .image,
+           let src = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
            let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] {
             w = props[kCGImagePropertyPixelWidth] as? Int
             h = props[kCGImagePropertyPixelHeight] as? Int
             if let o = props[kCGImagePropertyOrientation] as? Int, (5...8).contains(o) { swap(&w, &h) }
         }
-        return ImageInfo(format: sourceFormat(of: url), pixelWidth: w, pixelHeight: h, byteCount: size)
+        return FileInfo(format: format, pixelWidth: w, pixelHeight: h, byteCount: size)
     }
 
     // MARK: - Converting
@@ -113,20 +88,29 @@ public enum ImageConverter {
     @discardableResult
     public static func convert(
         _ source: URL,
-        to format: ImageFormat,
+        to format: FileFormat,
         quality: Double = defaultQuality,
         destination: URL? = nil
     ) throws -> URL {
-        guard let encoder = encoder(for: format) else { throw ConversionError.encoderUnavailable(format) }
-        let (decoded, metadata) = try loadImage(at: source)
-        var image = decoded
-        if !format.supportsAlpha { image = try flattened(image) }
+        guard encoder(for: format) != nil else { throw ConversionError.engineMissing(format) }
+        let (image, metadata) = try loadImage(at: source)
+        return try export(image, as: format, to: destination ?? OutputNaming.destination(for: source, format: format),
+                          metadata: metadata, quality: quality)
+    }
 
-        let fm = FileManager.default
-        let work = fm.temporaryDirectory.appendingPathComponent("ConvertAll-\(UUID().uuidString)", isDirectory: true)
-        try fm.createDirectory(at: work, withIntermediateDirectories: true)
-        defer { try? fm.removeItem(at: work) }
-        let tmp = work.appendingPathComponent("out").appendingPathExtension(format.preferredExtension)
+    /// Encodes an already-decoded image (a video frame, a PDF page, …) to `destination`.
+    @discardableResult
+    static func export(
+        _ decoded: CGImage, as format: FileFormat, to destination: URL,
+        metadata: [CFString: Any] = [:], quality: Double = defaultQuality
+    ) throws -> URL {
+        guard let encoder = encoder(for: format) else { throw ConversionError.engineMissing(format) }
+        let flattenForFFmpegAVIF = format == .avif && { if case .ffmpeg = encoder { return true }; return false }()
+        let image = (!format.supportsAlpha || flattenForFFmpegAVIF) ? try flattened(decoded) : decoded
+
+        let work = try WorkDirectory()
+        defer { work.remove() }
+        let tmp = work.file("out.\(format.preferredExtension)")
 
         switch encoder {
         case .builtIn:
@@ -142,18 +126,17 @@ public enum ImageConverter {
             try writeWithImageIO(image, typeIdentifier: uti, format: format, metadata: metadata, quality: quality, to: tmp)
 
         case .external(let executable, let arguments):
-            let png = work.appendingPathComponent("in.png")
+            let png = work.file("in.png")
             try writeWithImageIO(image, typeIdentifier: "public.png", format: .png, metadata: [:], quality: 1, to: png)
-            try run(executable, arguments(png.path, tmp.path, Int((quality * 100).rounded())))
-        }
+            let result = try ProcessRunner.run(executable, arguments(png.path, tmp.path, Int((quality * 100).rounded())))
+            guard result.status == 0 else { throw ConversionError.writeFailed(FFmpeg.errorSummary(result.output)) }
 
-        let dest = destination ?? OutputNaming.destination(for: source, format: format)
-        do {
-            try fm.moveItem(at: tmp, to: dest)
-        } catch {
-            throw ConversionError.writeFailed(error.localizedDescription)
+        case .ffmpeg:
+            let png = work.file("in.png")
+            try writeWithImageIO(image, typeIdentifier: "public.png", format: .png, metadata: [:], quality: 1, to: png)
+            try MediaEngine.encodeImage(png, as: format, to: tmp)
         }
-        return dest
+        return try deliver(tmp, to: destination)
     }
 
     // MARK: - Decoding
@@ -163,7 +146,7 @@ public enum ImageConverter {
     static func loadImage(at url: URL) throws -> (CGImage, [CFString: Any]) {
         let name = url.lastPathComponent
 
-        if let format = ImageFormat(url: url), format.hasBuiltInCodec,
+        if let format = FileFormat(url: url), format.hasBuiltInCodec,
            let bytes = try? [UInt8](Data(contentsOf: url)) {
             let decoded: RGBAImage? = switch format {
             case .qoi: try? QOI.decode(bytes)
@@ -195,7 +178,6 @@ public enum ImageConverter {
             if let image { return (image, preservedMetadata(props)) }
         }
 
-        #if canImport(AppKit)
         // SVG and anything else AppKit can draw.
         if let ns = NSImage(contentsOf: url), ns.size.width > 0, ns.size.height > 0 {
             let longest = max(ns.size.width, ns.size.height)
@@ -209,7 +191,6 @@ public enum ImageConverter {
                 if let image = ctx.makeImage() { return (image, [:]) }
             }
         }
-        #endif
 
         throw ConversionError.unreadable(name)
     }
@@ -232,14 +213,14 @@ public enum ImageConverter {
     // MARK: - Encoding
 
     private static func writeWithImageIO(
-        _ image: CGImage, typeIdentifier: String, format: ImageFormat,
+        _ image: CGImage, typeIdentifier: String, format: FileFormat,
         metadata: [CFString: Any], quality: Double, to url: URL
     ) throws {
         let frames: [CGImage] = format == .ico ? try iconFrames(image) : [image]
         guard let dest = CGImageDestinationCreateWithURL(url as CFURL, typeIdentifier as CFString, frames.count, nil) else {
             throw ConversionError.writeFailed("couldn't create a \(format.displayName) file")
         }
-        let keepsMetadata: [ImageFormat] = [.jpeg, .heic, .tiff, .png, .avif]
+        let keepsMetadata: [FileFormat] = [.jpeg, .heic, .tiff, .png, .avif]
         var props: [CFString: Any] = keepsMetadata.contains(format) ? metadata : [:]
         if format.isLossy { props[kCGImageDestinationLossyCompressionQuality] = quality }
         for frame in frames { CGImageDestinationAddImage(dest, frame, props as CFDictionary) }
@@ -263,27 +244,11 @@ public enum ImageConverter {
         }
     }
 
-    private static func run(_ executable: URL, _ arguments: [String]) throws {
-        let process = Process()
-        process.executableURL = executable
-        process.arguments = arguments
-        let stderr = Pipe()
-        process.standardError = stderr
-        process.standardOutput = FileHandle.nullDevice
-        try process.run()
-        let errData = stderr.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            let msg = String(data: errData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            throw ConversionError.writeFailed(msg?.isEmpty == false ? msg! : "\(executable.lastPathComponent) failed")
-        }
-    }
-
     // MARK: - Pixel plumbing
 
-    private static let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
+    static let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
 
-    private static func rgbaContext(width: Int, height: Int) -> CGContext? {
+    static func rgbaContext(width: Int, height: Int) -> CGContext? {
         CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
                   space: sRGB, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
     }

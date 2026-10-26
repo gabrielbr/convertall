@@ -28,6 +28,10 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/ConvertAll" "$APP/Contents/MacOS/ConvertAll"
 cp Support/Info.plist "$APP/Contents/Info.plist"
+# CI stamps a monotonically increasing build number (CFBundleVersion).
+if [[ -n "${BUILD_NUMBER:-}" ]]; then
+  plutil -replace CFBundleVersion -string "$BUILD_NUMBER" "$APP/Contents/Info.plist"
+fi
 cp Support/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 

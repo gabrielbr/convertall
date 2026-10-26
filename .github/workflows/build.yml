@@ -2,11 +2,38 @@ name: Build
 
 on:
   push:
+    branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
+  version:
+    # Every change ships as a release, so every PR must bump
+    # CFBundleShortVersionString in Support/Info.plist to an unreleased version.
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        name: Read version
+        run: |
+          V=$(python3 -c "import plistlib; print(plistlib.load(open('Support/Info.plist','rb'))['CFBundleShortVersionString'])")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Version: $V"
+      - name: Check the version is not released yet
+        run: |
+          V='${{ steps.read.outputs.version }}'
+          if git ls-remote --exit-code --tags origin "refs/tags/v$V" >/dev/null; then
+            echo "::error file=Support/Info.plist::v$V is already released. Bump CFBundleShortVersionString (scripts/bump-version.sh)."
+            exit 1
+          fi
+
   macos:
     runs-on: macos-14
+    needs: version
     steps:
       - uses: actions/checkout@v4
       - name: Select Xcode
@@ -14,13 +41,15 @@ jobs:
       - name: Test
         run: swift test
       - name: Build app
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
         run: scripts/build-app.sh
       - name: Package
-        run: cd build && ditto -c -k --keepParent ConvertAll.app ConvertAll.zip
+        run: cd build && ditto -c -k --keepParent ConvertAll.app "ConvertAll-${{ needs.version.outputs.version }}.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: ConvertAll
-          path: build/ConvertAll.zip
+          path: build/ConvertAll-*.zip
 
   linux-core:
     runs-on: ubuntu-latest
@@ -29,3 +58,29 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test core (codecs, search, naming)
         run: swift test
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [version, macos, linux-core]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ConvertAll
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          cat > notes.md <<'NOTES'
+          **Install:** download `ConvertAll-*.zip`, unzip, and move **ConvertAll.app** to Applications.
+          The app is not notarized yet, so the first time: right-click ConvertAll.app → **Open** → **Open**
+          (or run `xattr -dr com.apple.quarantine /Applications/ConvertAll.app`).
+
+          Then right-click any image in Finder → **Open With › ConvertAll**.
+          NOTES
+          gh release create "v$V" "ConvertAll-$V.zip" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "ConvertAll $V" --notes-file notes.md --generate-notes

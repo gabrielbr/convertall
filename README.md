@@ -71,6 +71,10 @@ swift test           # codec, search and naming tests (also run on Linux)
 python3 scripts/make-icon.py   # regenerate Support/AppIcon.icns (needs Pillow)
 ```
 
+## Releases
+
+Every merge to `main` publishes a GitHub Release (`v<version>`) with a ready-to-run `ConvertAll-<version>.zip`. The version comes from `CFBundleShortVersionString` in `Support/Info.plist`. Bump it with `scripts/bump-version.sh` in each PR; CI rejects versions that are already released.
+
 ## Architecture
 
 ```

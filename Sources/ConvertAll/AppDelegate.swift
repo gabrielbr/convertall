@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Updater.shared.checkIfDue()
         // Launched directly (Launchpad/Finder double-click) rather than via "Open With":
         // explain how to use it instead of showing nothing.
         perform(#selector(showWelcomeIfLaunchedDirectly), with: nil, afterDelay: 0.4)
@@ -65,7 +66,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         perform(#selector(quitIfIdle), with: nil, afterDelay: idleTimeout)
     }
 
+    @objc func checkForUpdates(_ sender: Any?) {
+        WelcomeWindow.shared.show()
+        Updater.shared.check(userInitiated: true)
+    }
+
     @objc private func quitIfIdle() {
+        guard !Updater.shared.isBusy else { return scheduleIdleQuit() }
         if !ChipController.shared.isVisible, !WelcomeWindow.shared.isVisible { NSApp.terminate(nil) }
     }
 }
@@ -79,6 +86,7 @@ enum MainMenu {
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About ConvertAll", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Check for Updates…", action: #selector(AppDelegate.checkForUpdates(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit ConvertAll", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu

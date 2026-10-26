@@ -6,12 +6,12 @@ import Foundation
 /// "hdr" → EXR. Non-matching formats are dropped; ties keep the input order
 /// (which is already personalised by recent use).
 public enum FormatSearch {
-    public static func rank(_ formats: [ImageFormat], query: String) -> [ImageFormat] {
+    public static func rank(_ formats: [FileFormat], query: String) -> [FileFormat] {
         let q = normalize(query)
         guard !q.isEmpty else { return formats }
 
         return formats.enumerated()
-            .compactMap { index, format -> (ImageFormat, Int, Int)? in
+            .compactMap { index, format -> (FileFormat, Int, Int)? in
                 let s = score(format, q)
                 return s > 0 ? (format, s, index) : nil
             }
@@ -19,7 +19,7 @@ public enum FormatSearch {
             .map(\.0)
     }
 
-    static func score(_ format: ImageFormat, _ q: String) -> Int {
+    static func score(_ format: FileFormat, _ q: String) -> Int {
         let name = normalize(format.displayName)
         if name == q { return 1000 }
         if format.fileExtensions.contains(q) { return 900 }

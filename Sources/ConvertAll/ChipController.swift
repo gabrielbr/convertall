@@ -67,12 +67,12 @@ final class ChipController {
             guard let self, let model = self.model, event.window === self.panel else { return event }
             return model.handleKey(event) ? nil : event
         }
-        // Clicking anywhere else dismisses the chip, like a menu — unless it's mid-conversion.
+        // Clicking anywhere else dismisses the chip, like a menu — unless it's busy (converting,
+        // downloading); then it keeps floating so you can keep working while it finishes.
         resignObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
         ) { [weak self] _ in
-            guard let self, let model = self.model else { return }
-            if case .converting = model.phase { return }
+            guard let self, let model = self.model, !model.isBusy else { return }
             self.close()
         }
     }

@@ -51,8 +51,8 @@ enum DocumentEngine {
 
         case .txt:
             var encoding = String.Encoding.utf8
-            let string = (try? String(contentsOf: url, usedEncoding: &encoding))
-                ?? (try String(contentsOf: url, encoding: .isoLatin1))
+            let string = try (try? String(contentsOf: url, usedEncoding: &encoding))
+                ?? String(contentsOf: url, encoding: .isoLatin1)
             return NSAttributedString(string: string, attributes: bodyAttributes)
 
         default:

@@ -94,10 +94,14 @@ public enum ImageConverter {
         destination: URL? = nil
     ) throws -> URL {
         guard encoder(for: format) != nil else { throw ConversionError.engineMissing(format) }
-        let (image, metadata) = try loadImage(at: source)
         let compress = compress ?? (FileFormat(url: source) == format)
-        return try export(image, as: format, to: destination ?? OutputNaming.destination(for: source, format: format),
-                          metadata: metadata, options: options, compress: compress)
+        let destination = destination ?? OutputNaming.destination(for: source, format: format)
+        // Animated GIF/WebP/APNG/HEICS → GIF or APNG keeps every frame.
+        if !compress, format == .gif || format == .png, frameCount(source) > 1 {
+            return try exportAnimation(from: source, as: format, to: destination, options: options)
+        }
+        let (image, metadata) = try loadImage(at: source)
+        return try export(image, as: format, to: destination, metadata: metadata, options: options, compress: compress)
     }
 
     /// Encodes an already-decoded image (a video frame, a PDF page, …) to `destination`,
@@ -176,7 +180,63 @@ public enum ImageConverter {
         return try deliver(best!.url, to: destination)
     }
 
-    static func fileSize(_ url: URL) -> Int {
+    // MARK: - Animation
+
+    public static func frameCount(_ url: URL) -> Int {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary)
+        else { return 0 }
+        return CGImageSourceGetCount(src)
+    }
+
+    /// Per-frame delay from whichever animation dictionary the source uses.
+    private static func frameDelay(_ props: [CFString: Any]) -> Double {
+        let sources: [(CFString, CFString, CFString)] = [
+            (kCGImagePropertyGIFDictionary, kCGImagePropertyGIFUnclampedDelayTime, kCGImagePropertyGIFDelayTime),
+            (kCGImagePropertyPNGDictionary, kCGImagePropertyAPNGUnclampedDelayTime, kCGImagePropertyAPNGDelayTime),
+            (kCGImagePropertyWebPDictionary, kCGImagePropertyWebPUnclampedDelayTime, kCGImagePropertyWebPDelayTime),
+            (kCGImagePropertyHEICSDictionary, kCGImagePropertyHEICSUnclampedDelayTime, kCGImagePropertyHEICSDelayTime),
+        ]
+        for (dict, unclamped, clamped) in sources {
+            guard let d = props[dict] as? [CFString: Any] else { continue }
+            let value = (d[unclamped] as? Double).flatMap { $0 > 0 ? $0 : nil } ?? (d[clamped] as? Double) ?? 0
+            return value >= 0.02 ? value : 0.1  // browsers treat tiny delays as 100 ms
+        }
+        return 0.1
+    }
+
+    static let maxFrames = 2000
+
+    private static func exportAnimation(
+        from source: URL, as format: FileFormat, to destination: URL, options: ConversionOptions
+    ) throws -> URL {
+        guard let src = CGImageSourceCreateWithURL(source as CFURL, nil) else {
+            throw ConversionError.unreadable(source.lastPathComponent)
+        }
+        let count = min(CGImageSourceGetCount(src), maxFrames)
+        let work = try WorkDirectory()
+        defer { work.remove() }
+        let out = work.file("out.\(format.preferredExtension)")
+        let uti = format == .gif ? "com.compuserve.gif" : "public.png"
+        guard let dest = CGImageDestinationCreateWithURL(out as CFURL, uti as CFString, count, nil) else {
+            throw ConversionError.writeFailed("couldn't create the animation")
+        }
+        let loop: [CFString: Any] = format == .gif
+            ? [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]]
+            : [kCGImagePropertyPNGDictionary: [kCGImagePropertyAPNGLoopCount: 0]]
+        CGImageDestinationSetProperties(dest, loop as CFDictionary)
+        for i in 0..<count {
+            guard let frame = CGImageSourceCreateImageAtIndex(src, i, nil) else { continue }
+            let delay = frameDelay(CGImageSourceCopyPropertiesAtIndex(src, i, nil) as? [CFString: Any] ?? [:])
+            let props: [CFString: Any] = format == .gif
+                ? [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: delay]]
+                : [kCGImagePropertyPNGDictionary: [kCGImagePropertyAPNGDelayTime: delay]]
+            CGImageDestinationAddImage(dest, try resized(frame, to: options.size), props as CFDictionary)
+        }
+        guard CGImageDestinationFinalize(dest) else { throw ConversionError.writeFailed("couldn't write the animation") }
+        return try deliver(out, to: destination)
+    }
+
+    public static func fileSize(_ url: URL) -> Int {
         (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
     }
 

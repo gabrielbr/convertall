@@ -104,19 +104,18 @@ struct ChipView: View {
                             columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: ChipModel.columns),
                             spacing: 6
                         ) {
-                            ForEach(section.formats) { format in
-                                let requirement = model.requirement(for: format)
+                            ForEach(section.actions) { action in
+                                let requirement = model.requirement(for: action)
                                 FormatPill(
-                                    format: format,
-                                    label: model.isCompress(format) ? "Smaller" : format.displayName,
-                                    isHighlighted: model.highlighted == format,
-                                    isMatch: model.isMatch(format),
+                                    label: model.label(action),
+                                    isHighlighted: model.highlighted == action,
+                                    isMatch: model.isMatch(action),
                                     needsDownload: requirement != .ready,
-                                    hint: hint(for: format, requirement)
+                                    hint: hint(for: action, requirement)
                                 ) {
-                                    model.convert(format)
+                                    model.run(action)
                                 } onHover: {
-                                    model.highlighted = format
+                                    model.highlighted = action
                                 }
                             }
                         }
@@ -152,11 +151,11 @@ struct ChipView: View {
         .frame(minHeight: 170, alignment: .top)
     }
 
-    private func hint(for format: FileFormat, _ requirement: Requirement) -> String {
+    private func hint(for action: ChipAction, _ requirement: Requirement) -> String {
         switch requirement {
-        case .ready: model.blurb(for: format)
-        case .mediaEngine: "\(model.blurb(for: format)). Downloads the free media engine once (\(MediaPack.downloadSizeText))."
-        case .libreOffice: "\(model.blurb(for: format)). Needs LibreOffice (free)."
+        case .ready: model.blurb(action)
+        case .mediaEngine: "\(model.blurb(action)). Downloads the free media engine once (\(MediaPack.downloadSizeText))."
+        case .libreOffice: "\(model.blurb(action)). Needs LibreOffice (free)."
         }
     }
 
@@ -191,39 +190,42 @@ struct ChipView: View {
         case .picking:
             EmptyView()
 
-        case .needs(let format, .mediaEngine):
+        case .needs(let action, .mediaEngine):
             ResultMessage(
                 symbol: "shippingbox.fill", tint: .accentColor,
                 title: "One-time download",
-                detail: "\(format.displayName) uses FFmpeg, a free media engine (\(MediaPack.downloadSizeText)). It's saved once and works offline afterwards."
+                detail: "\(model.label(action)) uses FFmpeg, a free media engine (\(MediaPack.downloadSizeText)). It's saved once and works offline afterwards."
             ) {
-                Button("Download & Convert") { model.installEngineAndConvert() }
+                Button("Download & Continue") { model.installEngineAndRun() }
                     .keyboardShortcut(.defaultAction)
                 Button("Back") { model.backToPicking() }
             }
 
-        case .needs(let format, _):
+        case .needs(let action, _):
             ResultMessage(
                 symbol: "tablecells.fill", tint: .accentColor,
                 title: "LibreOffice needed",
-                detail: "Spreadsheets and presentations convert to \(format.displayName) with LibreOffice, free from libreoffice.org. Install it, then try again."
+                detail: "Spreadsheets and presentations convert to \(action.format.displayName) with LibreOffice, free from libreoffice.org. Install it, then try again."
             ) {
                 Button("Get LibreOffice") { model.getLibreOffice() }
                     .keyboardShortcut(.defaultAction)
-                Button("Try Again") { model.convert(format) }
+                Button("Try Again") { model.run(action) }
                 Button("Back") { model.backToPicking() }
             }
 
-        case .installingEngine(let format, let progress):
+        case .installingEngine(let action, let progress):
             ProgressPanel(
                 title: "Downloading media engine…",
-                detail: "Then converting to \(format.displayName)",
+                detail: "Then: \(action.verb.lowercased())",
                 progress: progress
             )
 
-        case .converting(let format, let progress, let done, let total):
+        case .trimming:
+            TrimPanel(model: model)
+
+        case .converting(let action, let progress, let done, let total):
             ProgressPanel(
-                title: "Converting to \(format.displayName)…",
+                title: "\(action.verb)…",
                 detail: total > 1 ? "\(done) of \(total)" : nil,
                 progress: progress,
                 onCancel: model.cancelConversion
@@ -236,11 +238,11 @@ struct ChipView: View {
                 progress: { if case .downloading(let p) = model.updateState { return p }; return 0 }()
             )
 
-        case .finished(let format, let outputs, let failures):
+        case .finished(let action, let outputs, let failures, let skipped):
             if outputs.isEmpty {
                 ResultMessage(
                     symbol: "exclamationmark.triangle.fill", tint: .orange,
-                    title: "Couldn't convert to \(format.displayName)",
+                    title: { if case .compress = action { return "Couldn't make it smaller" }; return "Couldn't convert to \(action.format.displayName)" }(),
                     detail: failures.first ?? "Something went wrong."
                 ) {
                     Button("Try Another Format") { model.backToPicking() }
@@ -251,10 +253,8 @@ struct ChipView: View {
                     symbol: "checkmark.circle.fill", tint: .green,
                     title: outputs.count == 1
                         ? outputs[0].lastPathComponent
-                        : "\(outputs.count) files converted to \(format.displayName)",
-                    detail: failures.isEmpty
-                        ? (model.savingsText.map { "Saved next to the original · \($0)" } ?? "Saved next to the original · drag me anywhere")
-                        : "\(failures.count) couldn't be converted"
+                        : "\(outputs.count) files converted to \(action.format.displayName)",
+                    detail: finishedDetail(failures: failures, skipped: skipped)
                 ) {
                     Button("Show in Finder", action: model.revealOutputs)
                         .keyboardShortcut(.defaultAction)
@@ -271,6 +271,17 @@ struct ChipView: View {
         }
     }
 
+    private func finishedDetail(failures: [String], skipped: Int) -> String {
+        var parts: [String] = []
+        if !failures.isEmpty { parts.append("\(failures.count) couldn't be converted") }
+        if skipped > 0 { parts.append("\(skipped) skipped (not convertible to this)") }
+        if parts.isEmpty {
+            parts.append("Saved next to the original")
+            parts.append(model.savingsText ?? "drag me anywhere")
+        }
+        return parts.joined(separator: " · ")
+    }
+
     private var updateDetail: String {
         switch model.updateState {
         case .failed(let message): message
@@ -283,7 +294,6 @@ struct ChipView: View {
 // MARK: - Pieces
 
 private struct FormatPill: View {
-    let format: FileFormat
     let label: String
     let isHighlighted: Bool
     let isMatch: Bool
@@ -361,6 +371,16 @@ private struct OptionsStrip: View {
             .toggleStyle(.button)
             .help("Remove location, camera and author details from the result")
 
+            if model.canTrim {
+                Button { model.beginTrim() } label: {
+                    Label(model.trim.map { "\(ChipModel.time($0.lowerBound))–\(ChipModel.time($0.upperBound))" } ?? "Trim",
+                          systemImage: "timeline.selection")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(model.trim == nil ? Color.primary : Color.accentColor)
+                .help("Keep only part of the clip")
+            }
+
             Spacer(minLength: 0)
             if !model.options.isDefault {
                 Button("Reset") { model.resetOptions() }
@@ -383,6 +403,80 @@ private struct OptionsStrip: View {
                 if model.options.size == size { Label(size.title, systemImage: "checkmark") } else { Text(size.title) }
             }
         }
+    }
+}
+
+/// Pick the part of a clip to keep: a two-handle range over the clip's length.
+private struct TrimPanel: View {
+    @ObservedObject var model: ChipModel
+
+    var body: some View {
+        let duration = model.mediaDuration ?? 1
+        let range = model.trim ?? 0...duration
+        VStack(spacing: 12) {
+            Text("Trim").font(.system(size: 13, weight: .semibold))
+            RangeSlider(range: Binding(get: { range }, set: { model.trim = $0 }), bounds: 0...duration)
+                .frame(height: 28)
+                .padding(.horizontal, 6)
+            HStack {
+                Text(ChipModel.time(range.lowerBound))
+                Spacer()
+                Text("\(ChipModel.time(range.upperBound - range.lowerBound)) kept").foregroundStyle(.secondary)
+                Spacer()
+                Text(ChipModel.time(range.upperBound))
+            }
+            .font(.system(size: 11).monospacedDigit())
+            HStack(spacing: 8) {
+                Button("Reset") { model.endTrim(keep: false) }
+                Button("Done") { model.endTrim(keep: true) }.keyboardShortcut(.defaultAction)
+            }
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .transition(.opacity)
+    }
+}
+
+/// A slider with two handles (start and end).
+private struct RangeSlider: View {
+    @Binding var range: ClosedRange<Double>
+    let bounds: ClosedRange<Double>
+    private let knob: CGFloat = 16
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = max(geo.size.width - knob, 1)
+            let span = max(bounds.upperBound - bounds.lowerBound, 0.001)
+            let x = { (v: Double) in CGFloat((v - bounds.lowerBound) / span) * width }
+            let value = { (px: CGFloat) in bounds.lowerBound + Double(min(max(px, 0), width) / width) * span }
+            let minGap = span / 200
+
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.primary.opacity(0.12)).frame(height: 4).padding(.horizontal, knob / 2)
+                Capsule().fill(Color.accentColor)
+                    .frame(width: max(x(range.upperBound) - x(range.lowerBound), 0), height: 4)
+                    .offset(x: x(range.lowerBound) + knob / 2)
+                handle.offset(x: x(range.lowerBound))
+                    .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("track")).onChanged { g in
+                        range = min(value(g.location.x - knob / 2), range.upperBound - minGap)...range.upperBound
+                    })
+                handle.offset(x: x(range.upperBound))
+                    .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("track")).onChanged { g in
+                        range = range.lowerBound...max(value(g.location.x - knob / 2), range.lowerBound + minGap)
+                    })
+            }
+            .frame(maxHeight: .infinity)
+            .coordinateSpace(name: "track")
+        }
+    }
+
+    private var handle: some View {
+        Circle()
+            .fill(Color.white)
+            .frame(width: knob, height: knob)
+            .shadow(color: .black.opacity(0.3), radius: 1.5, y: 0.5)
+            .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
     }
 }
 

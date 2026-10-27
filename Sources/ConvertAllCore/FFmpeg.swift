@@ -5,11 +5,16 @@ public struct MediaProbe: Equatable, Sendable {
     public var duration: Double?
     public var videoCodec: String?
     public var audioCodec: String?
+    public var width: Int?
+    public var height: Int?
 
-    public init(duration: Double? = nil, videoCodec: String? = nil, audioCodec: String? = nil) {
+    public init(duration: Double? = nil, videoCodec: String? = nil, audioCodec: String? = nil,
+                width: Int? = nil, height: Int? = nil) {
         self.duration = duration
         self.videoCodec = videoCodec
         self.audioCodec = audioCodec
+        self.width = width
+        self.height = height
     }
 }
 
@@ -21,6 +26,15 @@ public struct MediaPlan: Equatable, Sendable {
     /// FFmpeg writes this format; the image engine then converts it to the real
     /// target (e.g. a video frame is grabbed as PNG, then saved as HEIC).
     public var intermediate: FileFormat?
+    /// Goes before `-i` (fast seeking for trims).
+    public var inputArguments: [String] = []
+    /// Seconds of output, for progress (trimmed length when trimming).
+    public var outputDuration: Double?
+
+    public init(attempts: [[String]], intermediate: FileFormat? = nil) {
+        self.attempts = attempts
+        self.intermediate = intermediate
+    }
 
     /// The format FFmpeg itself produces.
     public func ffmpegOutput(for target: FileFormat) -> FileFormat { intermediate ?? target }
@@ -35,7 +49,25 @@ public enum FFmpeg {
     ///   `source == target` means "Compress": re-encode smaller in the same format.
     public static func plan(
         from source: FileFormat, to target: FileFormat, probe: MediaProbe,
-        options: ConversionOptions = ConversionOptions()
+        options: ConversionOptions = ConversionOptions(), trim: ClosedRange<Double>? = nil, animated: Bool = false
+    ) -> MediaPlan {
+        var plan = basePlan(from: source, to: target, probe: probe, options: options, trim: trim, animated: animated)
+        plan.outputDuration = probe.duration
+        if let trim, trim.upperBound > trim.lowerBound {
+            // -ss before -i seeks fast; -t limits the length. Copying can't cut precisely,
+            // so copy attempts were already left out by `basePlan`.
+            plan.inputArguments = ["-ss", seconds(trim.lowerBound)]
+            plan.attempts = plan.attempts.map { ["-t", seconds(trim.upperBound - trim.lowerBound)] + $0 }
+            plan.outputDuration = trim.upperBound - trim.lowerBound
+        }
+        return plan
+    }
+
+    static func seconds(_ value: Double) -> String { String(format: "%.3f", value) }
+
+    private static func basePlan(
+        from source: FileFormat, to target: FileFormat, probe: MediaProbe,
+        options: ConversionOptions, trim: ClosedRange<Double>?, animated: Bool
     ) -> MediaPlan {
         let compress = source == target
         let v = probe.videoCodec, a = probe.audioCodec
@@ -43,7 +75,7 @@ public enum FFmpeg {
             ConversionOptions.bitrateBudget(bytes: $0, duration: probe.duration, hasAudio: a != nil)
         }
         // Stream copy is only possible when nothing about the streams has to change.
-        let mayCopy = !compress && !options.size.changesDimensions && budget == nil
+        let mayCopy = !compress && !options.size.changesDimensions && budget == nil && trim == nil
         let metadata = options.stripMetadata ? ["-map_metadata", "-1", "-map_chapters", "-1"] : ["-map_metadata", "0"]
         let scale = ["-vf", videoScaleFilter(options.size)]
         let faststart = ["-movflags", "+faststart"]
@@ -139,7 +171,9 @@ public enum FFmpeg {
         case .png where compress:
             return MediaPlan(attempts: [pngQuantizeArguments(colors: options.quality == .smaller ? 96 : 256)])
         case .webp where source.category == .image, .avif where source.category == .image:
-            return MediaPlan(attempts: [stillImageArguments(for: target, quality: options.imageQuality(compress: compress))])
+            let quality = options.imageQuality(compress: compress)
+            return MediaPlan(attempts: [animated ? animatedImageArguments(for: target, quality: quality)
+                                                 : stillImageArguments(for: target, quality: quality)])
         default:
             // Any other image from a video: grab a representative frame as PNG, then
             // let the image engine produce the real format (and apply size options).
@@ -155,6 +189,60 @@ public enum FFmpeg {
                     "-cpu-used", "6", "-pix_fmt", "yuv420p", "-frames:v", "1"]
         }
         return ["-c:v", "libwebp", "-quality", "\(Int((quality * 100).rounded()))", "-frames:v", "1"]
+    }
+
+    /// Animated WebP/AVIF from an animated source (every frame, looping forever).
+    public static func animatedImageArguments(for format: FileFormat, quality: Double) -> [String] {
+        if format == .avif {
+            let crf = Int((1 - quality) * 60) + 12
+            return ["-c:v", "libaom-av1", "-crf", "\(crf)", "-b:v", "0", "-cpu-used", "6",
+                    "-pix_fmt", "yuv420p", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-an"]
+        }
+        return ["-c:v", "libwebp", "-quality", "\(Int((quality * 100).rounded()))", "-loop", "0", "-an"]
+    }
+
+    /// Joins several videos (any sizes, with or without sound) into one MP4: every clip is
+    /// fitted into the first clip's frame, and silent clips get a silent track.
+    /// Returns arguments for everything after `-hide_banner -nostdin -y`, including inputs.
+    public static func joinVideoArguments(
+        inputs: [(path: String, probe: MediaProbe)], output: String, options: ConversionOptions
+    ) -> [[String]] {
+        let w = max(2, (inputs.first?.probe.width ?? 1280) / 2 * 2)
+        let h = max(2, (inputs.first?.probe.height ?? 720) / 2 * 2)
+        var args: [String] = []
+        var silent: [Int: Int] = [:]  // clip index → input index of its silent track
+        for input in inputs { args += ["-i", input.path] }
+        for (i, input) in inputs.enumerated() where input.probe.audioCodec == nil {
+            silent[i] = inputs.count + silent.count
+            args += ["-f", "lavfi", "-t", seconds(input.probe.duration ?? 1), "-i", "anullsrc=r=48000:cl=stereo"]
+        }
+        var graph = ""
+        var pairs = ""
+        for i in inputs.indices {
+            graph += "[\(i):v:0]scale=\(w):\(h):force_original_aspect_ratio=decrease,pad=\(w):\(h):(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v\(i)];"
+            graph += "[\(silent[i] ?? i):a:0]aresample=48000,aformat=channel_layouts=stereo[a\(i)];"
+            pairs += "[v\(i)][a\(i)]"
+        }
+        graph += "\(pairs)concat=n=\(inputs.count):v=1:a=1[v][a]"
+        let common = args + ["-filter_complex", graph, "-map", "[v]", "-map", "[a]"]
+        let audio = ["-c:a", "aac", "-b:a", "\(options.audioKbps())k", "-movflags", "+faststart", output]
+        return [
+            common + ["-c:v", "h264_videotoolbox", "-q:v", "\(options.videoToolboxQuality())"] + audio,
+            common + ["-c:v", "libx264", "-preset", "medium", "-crf", "\(options.x264CRF())"] + audio,
+        ]
+    }
+
+    /// Joins audio files back to back.
+    public static func joinAudioArguments(inputPaths: [String], to format: FileFormat, output: String,
+                                          options: ConversionOptions) -> [String] {
+        var args: [String] = []
+        for path in inputPaths { args += ["-i", path] }
+        let graph = inputPaths.indices.map { "[\($0):a:0]aresample=48000,aformat=channel_layouts=stereo[a\($0)];" }.joined()
+            + inputPaths.indices.map { "[a\($0)]" }.joined() + "concat=n=\(inputPaths.count):v=0:a=1[a]"
+        let codec = format == .mp3
+            ? ["-c:a", "libmp3lame", "-q:a", "\(options.mp3VBR())"]
+            : ["-c:a", "aac", "-b:a", "\(options.audioKbps())k", "-movflags", "+faststart"]
+        return args + ["-filter_complex", graph, "-map", "[a]"] + codec + [output]
     }
 
     /// Lossy PNG optimisation (like TinyPNG): quantise to an 8-bit palette, keeping alpha.
@@ -192,6 +280,10 @@ public enum FFmpeg {
             if probe.videoCodec == nil, !line.contains("attached pic"),
                let m = firstMatch(#": Video: ([A-Za-z0-9_]+)"#, in: String(line)) {
                 probe.videoCodec = m[0]
+                if let size = firstMatch(#", (\d{2,5})x(\d{2,5})[ ,\[]"#, in: String(line)) {
+                    probe.width = Int(size[0])
+                    probe.height = Int(size[1])
+                }
             }
             if probe.audioCodec == nil, let m = firstMatch(#": Audio: ([A-Za-z0-9_]+)"#, in: String(line)) {
                 probe.audioCodec = m[0]

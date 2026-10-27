@@ -19,7 +19,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.3.0</string>
+	<string>0.4.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>LSApplicationCategoryType</key>
@@ -34,7 +34,7 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 ConvertAll</string>
 
-	<!-- Right-click › Open With › ConvertAll for every supported file type. -->
+	<!-- Right-click › Open With › ConvertAll for every supported file type, and for folders. -->
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -97,6 +97,18 @@
 				<string>org.openxmlformats.presentationml.presentation</string>
 				<string>com.microsoft.powerpoint.ppt</string>
 				<string>org.oasis-open.opendocument.presentation</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Folder</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.folder</string>
 			</array>
 		</dict>
 	</array>
@@ -270,6 +282,7 @@
 				<string>public.text</string>
 				<string>public.spreadsheet</string>
 				<string>public.presentation</string>
+				<string>public.folder</string>
 			</array>
 		</dict>
 	</array>

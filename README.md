@@ -65,6 +65,26 @@ Esc clears what you typed, and a second Esc closes the chip. Clicking anywhere e
 - **Hardware video encoding.** Video is encoded with Apple's VideoToolbox, which is several times faster and much lighter on the battery. If that fails, ConvertAll falls back to the x264 software encoder.
 - **Notifications.** When a long conversion finishes while you're in another app, you get a notification with a **Show in Finder** button.
 
+### Folders, batches, combining, trimming
+
+- **Folders.** Right-click a folder and choose **Open With › ConvertAll** (or use the Quick Action). Every convertible file inside is converted, including subfolders. Hidden files and app bundles are skipped. If the files are of mixed kinds, the chip offers every format any of them can become, and files that can't become the chosen format are skipped and counted.
+- **Parallel batches.** Several files convert at once:
+  - Images and documents run in parallel up to half your CPU cores, with a maximum of 8.
+  - Video runs 1–3 at a time, because FFmpeg is already multi-threaded.
+  - LibreOffice runs one at a time.
+
+  The progress bar combines the progress of every file.
+- **Combine.** A **Combine** section appears when it makes sense:
+  - **One PDF** from images and PDFs, in selection order. Image pages are A4 or Letter (depending on your region), turned to match the image's orientation.
+  - **Join MP4** puts clips back to back. They're fitted to the first clip's frame, and clips without sound get silence.
+  - **Join MP3 / M4A** for audio.
+
+  A single image also gets a **PDF** pill. The result is saved as `name (combined).ext`.
+- **Trim.** For a single video or audio file, **Trim** in the options strip opens a two-handle range slider. The chosen range applies to the next conversion or **Smaller**.
+- **Animation kept.**
+  - Animated GIF, WebP, APNG and HEICS files stay animated as GIF or APNG (frame delays are kept), and as WebP or AVIF through the media engine.
+  - An animated WebP or PNG can also become a video, like a GIF.
+
 ### Design decisions
 
 - **The chip sits where your attention already is.** It opens next to the pointer you just used for the right-click, so your eyes don't have to move.
@@ -129,6 +149,7 @@ Sources/
     FFmpeg.swift             FFmpeg argument plans (stream copy first, re-encode fallback), output parsers
     AppVersion.swift         version parsing and comparison for the updater
     FormatSearch.swift       ranking of what the user types ("jp" → JPEG, "song" → MP3)
+    FolderScanner.swift      folders → the convertible files inside
     OutputNaming.swift       "photo.png", "photo 2.png", "report (PNG)/report 01.png" … never overwrite
     RGBAImage.swift          plain 8-bit RGBA buffer + alpha flattening
     Codecs/QOI|PNM|TGA       pure-Swift encoders/decoders (verified against Pillow)
@@ -138,13 +159,15 @@ Sources/
       MediaEngine.swift      FFmpeg runner with progress; MediaPack = pinned, verified download
       DocumentEngine.swift   DOCX/DOC/ODT/RTF/TXT/HTML/PDF natively; PDF pages → images
       OfficeEngine.swift     LibreOffice (headless) for spreadsheets and presentations
+      Combiner.swift         many files → one PDF / MP4 / MP3 / M4A
       UpdateInstaller.swift  GitHub Releases check, verified download, in-place swap
       ConversionTask.swift   progress + cancellation, process runner, downloader
   ConvertAll/                the macOS app (AppKit + SwiftUI)
     AppDelegate.swift        accessory app, open-file events, idle quit, Edit menu
     ServiceProvider.swift    Finder Quick Action / Services entry point
     ChipController.swift     floating NSPanel, pointer-relative placement, keyboard, dismissal
-    ChipModel.swift          state: sections, search, highlight, engine install, convert → done/failed
+    ChipAction.swift         a pill: convert to a format, make smaller, or combine
+    ChipModel.swift          state: sections, search, highlight, trim, engine install, parallel run → done/failed
     Updater.swift            periodic update check and install
     Notifier.swift           "done" notifications with Show in Finder
     ChipView.swift           the chip UI
@@ -157,7 +180,7 @@ scripts/build-app.sh         SwiftPM → ConvertAll.app bundle
 
 ## Known limitations
 
-- Animated GIF, WebP and HEIC sources become images from their first frame only. GIF to video keeps the animation.
+- Animated sources keep their animation only when the target can hold it (GIF, APNG, WebP, AVIF, video). Other targets get the first frame.
 - Video to a still image keeps one representative frame.
 - PDF to DOCX, ODT, RTF and the other text formats keeps the text and basic styling, but not the exact layout.
 - There's no settings UI yet. Output always goes next to the original.

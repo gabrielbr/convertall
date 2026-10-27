@@ -72,7 +72,9 @@ final class BackgroundServices: NSObject {
 
     @objc private func convertClipboardFromMenu() { convertClipboard() }
     @objc private func openSettings() { SettingsWindow.shared.show() }
-    @objc private func checkUpdates() { (NSApp.delegate as? AppDelegate)?.checkForUpdates(nil) }
+    @objc private func checkUpdates() {
+        Task { @MainActor in (NSApp.delegate as? AppDelegate)?.checkForUpdates(nil) }
+    }
     @objc private func quit() { NSApp.terminate(nil) }
 
     // MARK: Clipboard

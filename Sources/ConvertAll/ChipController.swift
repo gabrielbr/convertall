@@ -42,8 +42,10 @@ final class ChipController {
     var onDidClose: () -> Void = {}
     var isVisible: Bool { panel?.isVisible ?? false }
 
-    /// - Parameter clipboard: the result is copied to the clipboard (⌥⌘V flow).
-    func present(_ urls: [URL], at point: NSPoint = NSEvent.mouseLocation, clipboard: Bool = false) {
+    /// - Parameters:
+    ///   - clipboard: the result is copied to the clipboard (⌥⌘V flow).
+    ///   - actionID: start this action right away (Finder menu presets), e.g. "convert-png".
+    func present(_ urls: [URL], at point: NSPoint = NSEvent.mouseLocation, clipboard: Bool = false, run actionID: String? = nil) {
         close(animated: false)
 
         let model = ChipModel(files: urls)
@@ -64,6 +66,10 @@ final class ChipController {
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
         DispatchQueue.main.async { panel.invalidateShadow() }
+
+        if let actionID, let action = model.action(withID: actionID) {
+            DispatchQueue.main.async { model.run(action) }
+        }
 
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, let model = self.model, event.window === self.panel else { return event }

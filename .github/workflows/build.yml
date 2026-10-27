@@ -51,6 +51,8 @@ jobs:
           test -x build/ConvertAll.app/Contents/Helpers/convertall
           build/ConvertAll.app/Contents/Helpers/convertall --formats | head -3
           ls build/ConvertAll.app/Contents/Resources/Metadata.appintents
+          test -d build/ConvertAll.app/Contents/PlugIns/FinderMenu.appex
+          codesign -d --entitlements - build/ConvertAll.app/Contents/PlugIns/FinderMenu.appex 2>&1 | grep -q app-sandbox
           codesign --verify --deep --strict build/ConvertAll.app
       - name: Package
         run: cd build && ditto -c -k --keepParent ConvertAll.app "ConvertAll-${{ needs.version.outputs.version }}.zip"

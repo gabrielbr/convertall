@@ -204,18 +204,19 @@ struct ChipView: View {
         case .needs(let action, _):
             ResultMessage(
                 symbol: "tablecells.fill", tint: .accentColor,
-                title: "LibreOffice needed",
-                detail: "Spreadsheets and presentations convert to \(action.format.displayName) with LibreOffice, free from libreoffice.org. Install it, then try again."
+                title: "One-time download",
+                detail: "Spreadsheets and presentations use LibreOffice's free document engine (\(OfficePack.downloadSizeText)). It's saved once and works offline afterwards."
             ) {
-                Button("Get LibreOffice") { model.getLibreOffice() }
+                Button("Download & Continue") { model.installEngineAndRun() }
                     .keyboardShortcut(.defaultAction)
-                Button("Try Again") { model.run(action) }
+                Button("I Have LibreOffice") { model.run(action) }
+                    .help("Already installed LibreOffice yourself? ConvertAll will find it.")
                 Button("Back") { model.backToPicking() }
             }
 
         case .installingEngine(let action, let progress):
             ProgressPanel(
-                title: "Downloading media engine…",
+                title: model.requirement(for: action) == .libreOffice ? "Downloading document pack…" : "Downloading media engine…",
                 detail: "Then: \(action.verb.lowercased())",
                 progress: progress
             )

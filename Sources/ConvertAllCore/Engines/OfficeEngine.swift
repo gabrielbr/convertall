@@ -2,7 +2,8 @@
 import AppKit
 import Foundation
 
-/// Spreadsheets and presentations through LibreOffice (free, installed by the user).
+/// Spreadsheets and presentations through LibreOffice: the one-click document pack
+/// (`OfficePack`) or a LibreOffice the user installed themselves.
 public enum OfficeEngine {
     public static let downloadPage = URL(string: "https://www.libreoffice.org/download/download-libreoffice/")!
 
@@ -14,6 +15,7 @@ public enum OfficeEngine {
         if let found = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "org.libreoffice.script") {
             candidates.insert(found, at: 0)
         }
+        candidates.append(OfficePack.app)  // the document pack, when the user has no LibreOffice of their own
         return candidates
             .map { $0.appendingPathComponent("Contents/MacOS/soffice") }
             .first { FileManager.default.isExecutableFile(atPath: $0.path) }

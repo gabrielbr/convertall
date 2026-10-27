@@ -113,12 +113,16 @@ private struct WelcomeView: View {
             }
             Divider().padding(.leading, 40)
             ExtraRow(
-                symbol: "tablecells", title: "LibreOffice",
-                detail: "Spreadsheets & presentations (free)",
+                symbol: "tablecells", title: "Document pack",
+                detail: "Spreadsheets & presentations (LibreOffice)",
                 installed: extras.officeInstalled
             ) {
-                Button("Get LibreOffice") { NSWorkspace.shared.open(OfficeEngine.downloadPage) }
-                    .controlSize(.small)
+                if let p = extras.officeProgress {
+                    ProgressView(value: p).frame(width: 90)
+                } else {
+                    Button("Download · \(OfficePack.downloadSizeText)") { extras.installOffice() }
+                        .controlSize(.small)
+                }
             }
             if let error = extras.error {
                 Text(error).font(.system(size: 11)).foregroundStyle(.red).padding(.bottom, 8)
@@ -227,11 +231,27 @@ private final class ExtrasModel: ObservableObject {
     @Published var mediaInstalled = false
     @Published var officeInstalled = false
     @Published var mediaProgress: Double?
+    @Published var officeProgress: Double?
     @Published var error: String?
 
     func refresh() {
         mediaInstalled = MediaEngine.ffmpegURL != nil
         officeInstalled = OfficeEngine.sofficeURL != nil
+    }
+
+    func installOffice() {
+        officeProgress = 0
+        error = nil
+        let box = WeakBox(self)
+        Task { @MainActor in
+            do {
+                try await OfficePack.install { p in DispatchQueue.main.async { box.value?.officeProgress = p } }
+            } catch {
+                self.error = "Download failed: \(error.localizedDescription)"
+            }
+            officeProgress = nil
+            refresh()
+        }
     }
 
     func installMedia() {

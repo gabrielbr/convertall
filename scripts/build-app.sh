@@ -30,6 +30,7 @@ if command -v xcodegen >/dev/null 2>&1 && xcodebuild -version >/dev/null 2>&1; t
     ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
     CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="" \
     CURRENT_PROJECT_VERSION="${BUILD_NUMBER:-1}" \
+    MARKETING_VERSION="$(plutil -extract CFBundleShortVersionString raw Support/Info.plist)" \
     -quiet build
   BUILT="$(find build/DerivedData/Build/Products -maxdepth 2 -name ConvertAll.app -type d | head -1)"
   if [[ -z "$BUILT" ]]; then
@@ -70,10 +71,13 @@ if $INSTALL; then
   echo "› Installed to $APP"
 fi
 
-# Make "Open With" and the Quick Action show up immediately.
+# Make "Open With", the Quick Action and the Finder menu extension show up immediately.
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 "$LSREGISTER" -f "$APP" || true
 /System/Library/CoreServices/pbs -update 2>/dev/null || true
+if [[ -d "$APP/Contents/PlugIns/FinderMenu.appex" ]]; then
+  pluginkit -a "$APP/Contents/PlugIns/FinderMenu.appex" 2>/dev/null || true
+fi
 
 echo "✓ Done: $APP"
 echo "  Right-click any file in Finder → Open With → ConvertAll"

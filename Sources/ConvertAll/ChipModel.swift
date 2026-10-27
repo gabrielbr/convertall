@@ -102,6 +102,12 @@ final class ChipModel: ObservableObject {
             sections.append(Section(id: "combine", title: found.count > 1 ? "Combine" : "Document",
                                     actions: combine.map { .combine($0) }))
         }
+        // On-device smart actions for still images.
+        if !formats.isEmpty, formats.allSatisfy({ $0.category == .image }) {
+            var smart: [ChipAction] = [.extractText]
+            if VisionEngine.canRemoveBackground, animated.contains(false) { smart.append(.removeBackground) }
+            sections.append(Section(id: "smart", title: "Smart", actions: smart))
+        }
         var groups = ConversionMatrix.sections(for: formats)
         if groups.isEmpty, formats.count > 1 {
             var union: [FileFormat] = []
@@ -191,13 +197,17 @@ final class ChipModel: ObservableObject {
         case .convert(let f): ConversionMatrix.targets(for: sources[i]).contains(f) || (animated[i] && f.category == .video)
         case .compress(let f): sources[i] == f
         case .combine: true
+        case .extractText: sources[i].category == .image
+        case .removeBackground: sources[i].category == .image && !animated[i]
         }
     }
 
     /// The strictest requirement across the files the action applies to.
     func requirement(for action: ChipAction) -> Requirement {
-        if case .combine(let f) = action {
-            return f == .pdf || MediaEngine.ffmpegURL != nil ? .ready : .mediaEngine
+        switch action {
+        case .combine(let f): return f == .pdf || MediaEngine.ffmpegURL != nil ? .ready : .mediaEngine
+        case .extractText, .removeBackground: return .ready
+        default: break
         }
         let all = files.indices.filter { applies(action, to: $0) }.map {
             Converter.requirement(from: sources[$0], to: action.format, animated: animated[$0])
@@ -222,8 +232,10 @@ final class ChipModel: ObservableObject {
     var canTrim: Bool { files.count == 1 && mediaDuration != nil }
     func canTrim(_ action: ChipAction) -> Bool {
         guard canTrim else { return false }
-        if case .combine = action { return false }
-        return true
+        switch action {
+        case .convert, .compress: return true
+        default: return false
+        }
     }
 
     static func time(_ seconds: Double) -> String {
@@ -326,7 +338,11 @@ final class ChipModel: ObservableObject {
             let file = files[jobs[k]], source = sources[jobs[k]], task = tasks[k]
             return {
                 (k, await ChipModel.inBackground {
-                    try Converter.convert(file, from: source, to: target, options: options, trim: trim, task: task)
+                    switch action {
+                    case .extractText: [try VisionEngine.extractText(file, from: source, task: task)]
+                    case .removeBackground: [try VisionEngine.removeBackground(file, from: source, options: options, task: task)]
+                    default: try Converter.convert(file, from: source, to: target, options: options, trim: trim, task: task)
+                    }
                 })
             }
         }

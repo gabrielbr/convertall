@@ -3,6 +3,8 @@
 #   brew install xcodegen && xcodegen generate
 name: ConvertAll
 options:
+  # Readable by Xcode 15 (the CI image); newer XcodeGen defaults to Xcode 16's format.
+  projectFormat: xcode15_0
   deploymentTarget:
     macOS: "13.0"
   createIntermediateGroups: true

@@ -16,10 +16,12 @@ public enum MediaEngine {
         return FFmpeg.parseProbe(result.output)
     }
 
-    static func convert(_ url: URL, from source: FileFormat, to target: FileFormat, task: ConversionTask) throws -> URL {
+    static func convert(
+        _ url: URL, from source: FileFormat, to target: FileFormat, options: ConversionOptions, task: ConversionTask
+    ) throws -> URL {
         guard let ffmpeg = ffmpegURL else { throw ConversionError.engineMissing(target) }
         let probe = try probe(url, ffmpeg: ffmpeg)
-        let plan = FFmpeg.plan(from: source, to: target, probe: probe)
+        let plan = FFmpeg.plan(from: source, to: target, probe: probe, options: options)
         let produced = plan.ffmpegOutput(for: target)
 
         let work = try WorkDirectory()
@@ -48,7 +50,7 @@ public enum MediaEngine {
 
         let destination = OutputNaming.destination(for: url, format: target)
         if plan.intermediate != nil {
-            let final = try ImageConverter.convert(out, to: target, destination: destination)
+            let final = try ImageConverter.convert(out, to: target, options: options, compress: false, destination: destination)
             task.report(1)
             return final
         }
@@ -56,11 +58,10 @@ public enum MediaEngine {
         return try deliver(out, to: destination)
     }
 
-    /// Used by the image engine for WebP/AVIF, which macOS can't encode.
-    static func encodeImage(_ png: URL, as format: FileFormat, to output: URL) throws {
-        guard let ffmpeg = ffmpegURL else { throw ConversionError.engineMissing(format) }
-        let plan = FFmpeg.plan(from: .png, to: format, probe: MediaProbe())
-        let args = FFmpeg.baseArguments + ["-i", png.path] + plan.attempts[0] + [output.path]
+    /// Used by the image engine: WebP/AVIF encoding and PNG quantisation.
+    static func encodeImage(_ png: URL, arguments: [String], to output: URL) throws {
+        guard let ffmpeg = ffmpegURL else { throw ConversionError.engineMissing(.png) }
+        let args = FFmpeg.baseArguments + ["-i", png.path] + arguments + [output.path]
         let result = try ProcessRunner.run(ffmpeg, args)
         guard result.status == 0 else { throw ConversionError.writeFailed(FFmpeg.errorSummary(result.output)) }
     }

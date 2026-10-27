@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         NSApp.mainMenu = MainMenu.make()
         NSApp.servicesProvider = services
+        Notifier.shared.setUp()
         NSUpdateDynamicServices()
 
         ChipController.shared.onDidClose = { [weak self] in self?.scheduleIdleQuit() }

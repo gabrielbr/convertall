@@ -89,54 +89,110 @@ public enum ImageConverter {
     public static func convert(
         _ source: URL,
         to format: FileFormat,
-        quality: Double = defaultQuality,
+        options: ConversionOptions = ConversionOptions(),
+        compress: Bool? = nil,
         destination: URL? = nil
     ) throws -> URL {
         guard encoder(for: format) != nil else { throw ConversionError.engineMissing(format) }
         let (image, metadata) = try loadImage(at: source)
+        let compress = compress ?? (FileFormat(url: source) == format)
         return try export(image, as: format, to: destination ?? OutputNaming.destination(for: source, format: format),
-                          metadata: metadata, quality: quality)
+                          metadata: metadata, options: options, compress: compress)
     }
 
-    /// Encodes an already-decoded image (a video frame, a PDF page, …) to `destination`.
+    /// Encodes an already-decoded image (a video frame, a PDF page, …) to `destination`,
+    /// applying the size, quality and metadata options.
     @discardableResult
     static func export(
         _ decoded: CGImage, as format: FileFormat, to destination: URL,
-        metadata: [CFString: Any] = [:], quality: Double = defaultQuality
+        metadata: [CFString: Any] = [:], options: ConversionOptions = ConversionOptions(), compress: Bool = false
     ) throws -> URL {
         guard let encoder = encoder(for: format) else { throw ConversionError.engineMissing(format) }
-        let flattenForFFmpegAVIF = format == .avif && { if case .ffmpeg = encoder { return true }; return false }()
-        let image = (!format.supportsAlpha || flattenForFFmpegAVIF) ? try flattened(decoded) : decoded
+        let viaFFmpeg: Bool = { if case .ffmpeg = encoder { return true }; return false }()
+        var image = try resized(decoded, to: options.size)
+        if !format.supportsAlpha || (format == .avif && viaFFmpeg) { image = try flattened(image) }
+        let metadata = options.stripMetadata ? [:] : metadata
+        // Lossy PNG quantisation needs FFmpeg; without it PNG compression is a plain re-encode.
+        let quantizePNG = format == .png && compress && options.quality != .best && MediaEngine.ffmpegURL != nil
 
         let work = try WorkDirectory()
         defer { work.remove() }
-        let tmp = work.file("out.\(format.preferredExtension)")
+        var attempt = 0
 
-        switch encoder {
-        case .builtIn:
-            let rgba = try rgbaImage(from: image)
-            let bytes: [UInt8] = switch format {
-            case .qoi: QOI.encode(rgba)
-            case .tga: TGA.encode(rgba)
-            default: PNM.encode(rgba)
+        func encode(_ image: CGImage, quality: Double) throws -> URL {
+            attempt += 1
+            let out = work.file("out-\(attempt).\(format.preferredExtension)")
+            if quantizePNG {
+                let png = work.file("in-\(attempt).png")
+                try writeWithImageIO(image, typeIdentifier: "public.png", format: .png, metadata: [:], quality: 1, to: png)
+                try MediaEngine.encodeImage(png, arguments: FFmpeg.pngQuantizeArguments(colors: options.quality == .smaller ? 96 : 256), to: out)
+                return out
             }
-            try Data(bytes).write(to: tmp)
+            switch encoder {
+            case .builtIn:
+                let rgba = try rgbaImage(from: image)
+                let bytes: [UInt8] = switch format {
+                case .qoi: QOI.encode(rgba)
+                case .tga: TGA.encode(rgba)
+                default: PNM.encode(rgba)
+                }
+                try Data(bytes).write(to: out)
 
-        case .imageIO(let uti):
-            try writeWithImageIO(image, typeIdentifier: uti, format: format, metadata: metadata, quality: quality, to: tmp)
+            case .imageIO(let uti):
+                try writeWithImageIO(image, typeIdentifier: uti, format: format, metadata: metadata, quality: quality, to: out)
 
-        case .external(let executable, let arguments):
-            let png = work.file("in.png")
-            try writeWithImageIO(image, typeIdentifier: "public.png", format: .png, metadata: [:], quality: 1, to: png)
-            let result = try ProcessRunner.run(executable, arguments(png.path, tmp.path, Int((quality * 100).rounded())))
-            guard result.status == 0 else { throw ConversionError.writeFailed(FFmpeg.errorSummary(result.output)) }
+            case .external(let executable, let arguments):
+                let png = work.file("in-\(attempt).png")
+                try writeWithImageIO(image, typeIdentifier: "public.png", format: .png, metadata: [:], quality: 1, to: png)
+                let result = try ProcessRunner.run(executable, arguments(png.path, out.path, Int((quality * 100).rounded())))
+                guard result.status == 0 else { throw ConversionError.writeFailed(FFmpeg.errorSummary(result.output)) }
 
-        case .ffmpeg:
-            let png = work.file("in.png")
-            try writeWithImageIO(image, typeIdentifier: "public.png", format: .png, metadata: [:], quality: 1, to: png)
-            try MediaEngine.encodeImage(png, as: format, to: tmp)
+            case .ffmpeg:
+                let png = work.file("in-\(attempt).png")
+                try writeWithImageIO(image, typeIdentifier: "public.png", format: .png, metadata: [:], quality: 1, to: png)
+                try MediaEngine.encodeImage(png, arguments: FFmpeg.stillImageArguments(for: format, quality: quality), to: out)
+            }
+            return out
         }
-        return try deliver(tmp, to: destination)
+
+        guard let target = options.size.targetBytes else {
+            return try deliver(encode(image, quality: options.imageQuality(compress: compress)), to: destination)
+        }
+
+        // "Under X MB": step quality down first (lossy formats), then shrink the pixels.
+        let qualities = format.isLossy ? [0.85, 0.72, 0.6, 0.48, 0.36] : [1.0]
+        var best: (url: URL, size: Int)?
+        var current = image
+        search: for _ in 0..<6 {
+            for q in qualities {
+                let out = try encode(current, quality: q)
+                let size = fileSize(out)
+                if best == nil || size < best!.size { best = (out, size) }
+                if size <= target { break search }
+            }
+            guard min(current.width, current.height) > 32 else { break }
+            current = try resized(current, to: .maxDimension(max(current.width, current.height) * 3 / 4))
+        }
+        return try deliver(best!.url, to: destination)
+    }
+
+    static func fileSize(_ url: URL) -> Int {
+        (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+    }
+
+    /// High-quality downscale for the Size option (never upscales).
+    static func resized(_ image: CGImage, to size: ConversionOptions.Size) throws -> CGImage {
+        let (w, h) = size.scaled(width: image.width, height: image.height)
+        guard w != image.width || h != image.height else { return image }
+        let space = image.colorSpace.flatMap { $0.model == .rgb && $0.supportsOutput ? $0 : nil } ?? sRGB
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            ?? rgbaContext(width: w, height: h)
+        else { throw ConversionError.writeFailed("out of memory") }
+        ctx.interpolationQuality = .high
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let out = ctx.makeImage() else { throw ConversionError.writeFailed("couldn't resize") }
+        return out
     }
 
     // MARK: - Decoding

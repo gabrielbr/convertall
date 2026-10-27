@@ -94,7 +94,7 @@ struct ChipView: View {
                 ForEach(model.sections) { section in
                     VStack(alignment: .leading, spacing: 4) {
                         if model.sections.count > 1 {
-                            Text(section.category.title.uppercased())
+                            Text(section.title.uppercased())
                                 .font(.system(size: 9.5, weight: .semibold))
                                 .tracking(0.6)
                                 .foregroundStyle(.tertiary)
@@ -108,6 +108,7 @@ struct ChipView: View {
                                 let requirement = model.requirement(for: format)
                                 FormatPill(
                                     format: format,
+                                    label: model.isCompress(format) ? "Smaller" : format.displayName,
                                     isHighlighted: model.highlighted == format,
                                     isMatch: model.isMatch(format),
                                     needsDownload: requirement != .ready,
@@ -122,6 +123,7 @@ struct ChipView: View {
                     }
                 }
             }
+            OptionsStrip(model: model)
             Divider().opacity(0.6)
             HStack(spacing: 6) {
                 Text(model.footnote)
@@ -152,9 +154,9 @@ struct ChipView: View {
 
     private func hint(for format: FileFormat, _ requirement: Requirement) -> String {
         switch requirement {
-        case .ready: format.blurb
-        case .mediaEngine: "\(format.blurb). Downloads the free media engine once (\(MediaPack.downloadSizeText))."
-        case .libreOffice: "\(format.blurb). Needs LibreOffice (free)."
+        case .ready: model.blurb(for: format)
+        case .mediaEngine: "\(model.blurb(for: format)). Downloads the free media engine once (\(MediaPack.downloadSizeText))."
+        case .libreOffice: "\(model.blurb(for: format)). Needs LibreOffice (free)."
         }
     }
 
@@ -251,7 +253,7 @@ struct ChipView: View {
                         ? outputs[0].lastPathComponent
                         : "\(outputs.count) files converted to \(format.displayName)",
                     detail: failures.isEmpty
-                        ? "Saved next to the original · drag me anywhere"
+                        ? (model.savingsText.map { "Saved next to the original · \($0)" } ?? "Saved next to the original · drag me anywhere")
                         : "\(failures.count) couldn't be converted"
                 ) {
                     Button("Show in Finder", action: model.revealOutputs)
@@ -282,6 +284,7 @@ struct ChipView: View {
 
 private struct FormatPill: View {
     let format: FileFormat
+    let label: String
     let isHighlighted: Bool
     let isMatch: Bool
     let needsDownload: Bool
@@ -294,7 +297,7 @@ private struct FormatPill: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 3) {
-                Text(format.displayName)
+                Text(label)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                 if needsDownload {
                     Image(systemName: "arrow.down.circle")
@@ -323,6 +326,63 @@ private struct FormatPill: View {
             if inside { onHover() }
         }
         .help(hint)
+    }
+}
+
+/// Quality · Size · Metadata — compact menus under the grid. Defaults keep the
+/// one-click flow; choices are remembered for next time.
+private struct OptionsStrip: View {
+    @ObservedObject var model: ChipModel
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Menu {
+                ForEach(ConversionOptions.Quality.allCases, id: \.self) { q in
+                    Button { model.options.quality = q } label: {
+                        if model.options.quality == q { Label(q.title, systemImage: "checkmark") } else { Text(q.title) }
+                    }
+                }
+            } label: {
+                Label(model.options.quality.title, systemImage: "dial.medium")
+            }
+            .help("Quality: smaller files or better fidelity")
+
+            Menu {
+                Section("Dimensions") { sizeItems(ConversionOptions.Size.presets) }
+                Section("File size") { sizeItems(ConversionOptions.Size.targetPresets) }
+            } label: {
+                Label(model.options.size.shortTitle, systemImage: "arrow.down.right.and.arrow.up.left")
+            }
+            .help("Resize, or aim for a maximum file size")
+
+            Toggle(isOn: $model.options.stripMetadata) {
+                Label("No metadata", systemImage: model.options.stripMetadata ? "eye.slash.fill" : "eye.slash")
+            }
+            .toggleStyle(.button)
+            .help("Remove location, camera and author details from the result")
+
+            Spacer(minLength: 0)
+            if !model.options.isDefault {
+                Button("Reset") { model.resetOptions() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor)
+                    .help("Back to Balanced · Original size · keep metadata")
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .controlSize(.small)
+        .font(.system(size: 11))
+        .labelStyle(.titleAndIcon)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder private func sizeItems(_ sizes: [ConversionOptions.Size]) -> some View {
+        ForEach(sizes, id: \.self) { size in
+            Button { model.options.size = size } label: {
+                if model.options.size == size { Label(size.title, systemImage: "checkmark") } else { Text(size.title) }
+            }
+        }
     }
 }
 

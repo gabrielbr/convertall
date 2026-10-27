@@ -7,3 +7,6 @@ DerivedData/
 
 # XcodeGen output
 ConvertAll.xcodeproj/
+
+# Personal arcade picture/sound — embedded only in builds made on your own Mac, never committed
+Support/Personal/

@@ -3,6 +3,7 @@ import AppKit
 import AVFoundation
 import ConvertAllCore
 import CoreText
+import CryptoKit
 
 /// The 90s fighting-game skin. Listens to conversions and stages the show:
 ///   • "CONVERTLY!" slammed into the middle of the screen when a conversion finishes
@@ -194,6 +195,28 @@ enum ArcadeAssets {
 
     private static func remove(_ name: String) {
         while let existing = find(name) { try? FileManager.default.removeItem(at: existing) }
+    }
+
+    // MARK: Personal build
+
+    /// A build made on the user's own Mac can embed their arcade picture/sound from the
+    /// git-ignored `Support/Personal/` folder (`popin.*`, `sound.*`). On launch they're
+    /// installed as the pop-in once per new file, so later choices in Settings — and app
+    /// updates, which replace the bundle — don't undo anything.
+    static func installPersonalDefaults() {
+        guard let personal = Bundle.main.resourceURL?.appendingPathComponent("Personal", isDirectory: true),
+              let files = try? FileManager.default.contentsOfDirectory(at: personal, includingPropertiesForKeys: nil)
+        else { return }
+        for file in files {
+            let name = file.deletingPathExtension().lastPathComponent
+            guard name == "popin" || name == "sound",
+                  let data = try? Data(contentsOf: file) else { continue }
+            let fingerprint = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            let key = "personalArcade.\(name)"
+            guard UserDefaults.standard.string(forKey: key) != fingerprint else { continue }
+            if name == "popin" { try? importImage(from: file) } else { try? importSound(from: file) }
+            UserDefaults.standard.set(fingerprint, forKey: key)
+        }
     }
 
     static let fontName = "Press Start 2P"

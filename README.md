@@ -142,6 +142,11 @@ Turn it on in **Settings › Arcade**, or type **↑↑↓↓←→←→BA** in
   - **FLAWLESS VICTORY** when nothing fails, **PERFECT!** when a file shrinks by 70% or more, and **K.O.** when everything fails.
 - **HI-SCORE:** the total megabytes you've ever saved.
 - **Your own picture and sound.** Settings › Arcade › *Choose…* copies them into `~/Library/Application Support/ConvertAll/Arcade`. They stay on your Mac and are never bundled or published. Without them you get an original pixel mascot and a synthesized "Converty!".
+- **Embedding your own picture and sound** (in builds you make yourself):
+  1. Put `popin.png` (or another image) and `sound.mp3` (or another audio file) in `Support/Personal/`.
+  2. Run `scripts/build-app.sh --install`.
+
+  The files are embedded in that build only. `Support/Personal/` is git-ignored, so they're never committed or published. On first launch they become your pop-in, and they stay after app updates. Updates replace the app with the public build, but your files have already been copied into Application Support.
 - **Reduce Motion.** If Reduce Motion is on in macOS, the effects fade in and out instead of moving.
 - **Font.** The arcade font is [Press Start 2P](https://fonts.google.com/specimen/Press+Start+2P), under the SIL Open Font License. Its license is in `Support/Fonts/OFL.txt`.
 

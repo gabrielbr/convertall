@@ -17,6 +17,18 @@ INSTALL=false
 rm -rf "$APP"
 mkdir -p build
 
+# Your own arcade pop-in picture/sound for builds made on your Mac: put popin.<ext> and/or
+# sound.<ext> in Support/Personal/ (git-ignored, never published) and they're embedded.
+embed_personal() {
+  local files=(Support/Personal/popin.* Support/Personal/sound.*)
+  local found=()
+  for f in "${files[@]}"; do [[ -f "$f" ]] && found+=("$f"); done
+  [[ ${#found[@]} -gt 0 ]] || return 1
+  mkdir -p "$APP/Contents/Resources/Personal"
+  cp "${found[@]}" "$APP/Contents/Resources/Personal/"
+  echo "› Embedded your personal arcade files: ${found[*]}"
+}
+
 if command -v xcodegen >/dev/null 2>&1 && xcodebuild -version >/dev/null 2>&1; then
   echo "› Generating Xcode project…"
   xcodegen generate --quiet
@@ -39,6 +51,11 @@ if command -v xcodegen >/dev/null 2>&1 && xcodebuild -version >/dev/null 2>&1; t
     exit 1
   fi
   cp -R "$BUILT" "$APP"
+  if embed_personal; then
+    # Resources changed after Xcode signed the app: re-seal the outer bundle only
+    # (never --deep, which would strip the Finder extension's entitlements).
+    codesign --force --sign - "$APP"
+  fi
 else
   ARCH_FLAGS=(--arch arm64 --arch x86_64)
   # Universal builds need full Xcode; fall back to the host architecture otherwise.
@@ -55,6 +72,7 @@ else
   cp Support/Info.plist "$APP/Contents/Info.plist"
   cp Support/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
   cp Support/Fonts/PressStart2P-Regular.ttf Support/Fonts/OFL.txt "$APP/Contents/Resources/"
+  embed_personal || true
   printf 'APPL????' > "$APP/Contents/PkgInfo"
   # CI stamps a monotonically increasing build number (CFBundleVersion).
   plutil -replace CFBundleVersion -string "${BUILD_NUMBER:-1}" "$APP/Contents/Info.plist"

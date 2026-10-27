@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         BackgroundServices.shared.apply()
         BackgroundServices.cleanClipboardFolder()
         ArcadeAssets.registerFont()
+        ArcadeAssets.installPersonalDefaults()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

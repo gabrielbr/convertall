@@ -32,17 +32,21 @@ final class FinderSync: FIFinderSync {
         return menu
     }
 
+    /// Finder rebuilds this menu in its own process and keeps only each item's title, action,
+    /// image and tag — not `representedObject` or `target`. So the preset travels as the tag:
+    /// its index in `Presets.all`.
     private func add(_ title: String, action: String, to menu: NSMenu) {
+        guard let index = Presets.all.firstIndex(of: action) else { return }
         let item = NSMenuItem(title: title, action: #selector(run(_:)), keyEquivalent: "")
-        item.representedObject = action
-        item.target = self
+        item.tag = index
         menu.addItem(item)
     }
 
-    @objc private func run(_ sender: NSMenuItem) {
-        guard let action = sender.representedObject as? String,
+    @objc func run(_ sender: NSMenuItem) {
+        guard Presets.all.indices.contains(sender.tag),
               let selection = FIFinderSyncController.default().selectedItemURLs(), !selection.isEmpty
         else { return }
+        let action = Presets.all[sender.tag]
         var components = URLComponents()
         components.scheme = "convertall"
         components.host = "run"
@@ -55,6 +59,10 @@ final class FinderSync: FIFinderSync {
 /// The presets offered for a selection, by file kind (extension-based: the sandbox can't
 /// read the files themselves).
 enum Presets {
+    /// Every preset the menu can offer; a menu item's tag is its index here.
+    static let all: [String] = ["open", "compress-same", "combine-pdf", "combine-mp4", "extract-text", "remove-background"]
+        + ["png", "jpeg", "heic", "webp", "mp4", "gif", "mp3", "m4a", "wav", "docx", "txt", "pdf"].map { "convert-\($0)" }
+
     static func items(for urls: [URL]) -> [(String, String)] {
         let exts = Set(urls.map { $0.pathExtension.lowercased() })
         let images: Set = ["jpg", "jpeg", "png", "heic", "heif", "webp", "avif", "gif", "tiff", "tif", "bmp", "svg", "ico", "tga", "qoi", "exr", "ppm"]

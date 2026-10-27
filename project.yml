@@ -18,6 +18,8 @@ settings:
     ENABLE_HARDENED_RUNTIME: NO
     ENABLE_USER_SCRIPT_SANDBOXING: NO
     DEAD_CODE_STRIPPING: YES
+    # Build number (CFBundleVersion); CI passes its run number.
+    CURRENT_PROJECT_VERSION: "1"
 packages:
   ConvertAllKit:
     path: .

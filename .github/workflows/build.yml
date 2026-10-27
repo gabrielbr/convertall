@@ -51,7 +51,7 @@ jobs:
           test -x build/ConvertAll.app/Contents/MacOS/convertall
           build/ConvertAll.app/Contents/MacOS/convertall --formats | head -3
           ls build/ConvertAll.app/Contents/Resources/Metadata.appintents
-          find build/ConvertAll.app -name "*.appex" -maxdepth 3 || true
+          codesign --verify --deep --strict build/ConvertAll.app
       - name: Package
         run: cd build && ditto -c -k --keepParent ConvertAll.app "ConvertAll-${{ needs.version.outputs.version }}.zip"
       - uses: actions/upload-artifact@v4

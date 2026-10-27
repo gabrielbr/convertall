@@ -12,8 +12,17 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     var onDidClose: () -> Void = {}
     var isVisible: Bool { window?.isVisible ?? false }
+    private var autoShownAt: Date?
 
-    func show() {
+    /// Closes the window if it appeared by itself at launch moments ago (not if the user opened it).
+    func closeIfJustShownAutomatically() {
+        guard let shown = autoShownAt, Date().timeIntervalSince(shown) < 5, isVisible else { return }
+        autoShownAt = nil
+        window?.orderOut(nil)
+    }
+
+    func show(automatically: Bool = false) {
+        autoShownAt = automatically ? Date() : nil
         if window == nil {
             let hosting = NSHostingView(rootView: WelcomeView())
             let w = NSWindow(

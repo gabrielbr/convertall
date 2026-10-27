@@ -33,8 +33,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Updater.shared.checkIfDue()
-        // Launched directly (Launchpad/Finder double-click) rather than via "Open With":
-        // explain how to use it instead of showing nothing.
+        // macOS tells us whether this is a plain launch (Launchpad, double-clicking the app)
+        // or one to open files / handle a link (Open With, Quick Action, Finder menu). Only a
+        // plain launch gets the welcome window — never guess from timing, because files can
+        // arrive well after launch on a cold start.
+        let plainLaunch = notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool ?? true
+        guard plainLaunch else { return scheduleIdleQuit() }
         perform(#selector(showWelcomeIfLaunchedDirectly), with: nil, afterDelay: 0.4)
     }
 
@@ -44,7 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !receivedFiles, !IntentActivity.started, !AppSettings.shared.stored.menuBar else {
             return scheduleIdleQuit()
         }
-        WelcomeWindow.shared.show()
+        WelcomeWindow.shared.show(automatically: true)
     }
 
     @objc func openSettings(_ sender: Any?) {
@@ -55,6 +59,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         receivedFiles = true
+        NSObject.cancelPreviousPerformRequests(withTarget: self, selector: #selector(showWelcomeIfLaunchedDirectly), object: nil)
+        // Files beat the welcome window: if it just popped up on its own, take it away again.
+        WelcomeWindow.shared.closeIfJustShownAutomatically()
         open(urls)
     }
 

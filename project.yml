@@ -41,10 +41,13 @@ targets:
     dependencies:
       - package: ConvertAllKit
         product: ConvertAllCore
+      # Helper tools belong in Contents/Helpers: code in Contents/MacOS is sealed as part
+      # of the app itself, which breaks a separately signed tool's signature.
       - target: convertall
         embed: true
         copy:
-          destination: executables
+          destination: wrapper
+          subpath: Contents/Helpers
   convertall:
     type: tool
     platform: macOS

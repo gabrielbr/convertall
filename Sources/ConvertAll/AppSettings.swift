@@ -70,7 +70,7 @@ final class AppSettings: ObservableObject {
 
     static let cliLink = URL(fileURLWithPath: "/usr/local/bin/convertall")
 
-    static var bundledCLI: URL { Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/convertall") }
+    static var bundledCLI: URL { Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/convertall") }
 
     var cliInstalled: Bool {
         (try? FileManager.default.destinationOfSymbolicLink(atPath: Self.cliLink.path)) == Self.bundledCLI.path

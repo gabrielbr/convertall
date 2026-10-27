@@ -48,9 +48,9 @@ else
   BIN_DIR="$(swift build -c release ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"} --show-bin-path)"
 
   echo "› Assembling $APP"
-  mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+  mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
   cp "$BIN_DIR/ConvertAll" "$APP/Contents/MacOS/ConvertAll"
-  cp "$BIN_DIR/convertall" "$APP/Contents/MacOS/convertall"
+  cp "$BIN_DIR/convertall" "$APP/Contents/Helpers/convertall"
   cp Support/Info.plist "$APP/Contents/Info.plist"
   cp Support/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
   printf 'APPL????' > "$APP/Contents/PkgInfo"

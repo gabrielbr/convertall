@@ -44,8 +44,11 @@ enum DocumentEngine {
     static func compressPDF(_ url: URL, options: ConversionOptions, work: WorkDirectory) throws -> URL {
         guard let pdf = PDFDocument(url: url) else { throw ConversionError.unreadable(url.lastPathComponent) }
         if options.stripMetadata { pdf.documentAttributes = [:] }
-        var writeOptions: [PDFDocumentWriteOption: Any] = [.saveImagesAsJPEGOption: true]
-        if options.quality != .best { writeOptions[.optimizeImagesForScreenOption] = true }
+        var writeOptions: [PDFDocumentWriteOption: Any] = [:]
+        if #available(macOS 13.4, *) {
+            writeOptions[.saveImagesAsJPEGOption] = true
+            if options.quality != .best { writeOptions[.optimizeImagesForScreenOption] = true }
+        }
         let out = work.file("out.pdf")
         guard pdf.write(to: out, withOptions: writeOptions) else { throw ConversionError.writeFailed("couldn't save the PDF") }
         return try deliver(out, to: OutputNaming.destination(for: url, format: .pdf))

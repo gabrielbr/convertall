@@ -3,6 +3,7 @@ import AppKit
 import ConvertAllCore
 import FinderSync
 import SwiftUI
+import UniformTypeIdentifiers
 
 final class SettingsWindow: NSObject, NSWindowDelegate {
     static let shared = SettingsWindow()
@@ -92,6 +93,8 @@ private struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            ArcadeSection(settings: settings)
+
             Section {
                 HStack {
                     Text("convertall")
@@ -113,6 +116,67 @@ private struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 500)
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// 90s fighting-game skin.
+private struct ArcadeSection: View {
+    @ObservedObject var settings: AppSettings
+    @State private var refresh = 0  // re-reads the chosen files after a change
+
+    var body: some View {
+        Section {
+            Toggle("Arcade mode", isOn: $settings.stored.arcade.enabled)
+            if settings.stored.arcade.enabled {
+                Toggle("Announcer: “CONVERTLY!” when a conversion finishes", isOn: $settings.stored.arcade.announcer)
+                Toggle("Corner pop-in when several files or a folder finish", isOn: $settings.stored.arcade.popIn)
+                Toggle("Extras: ROUND · FIGHT!, hit combos, FLAWLESS VICTORY, K.O.", isOn: $settings.stored.arcade.extras)
+                HStack {
+                    Text("Pop-in picture")
+                    Spacer()
+                    if let image = ArcadeAssets.image {
+                        Image(nsImage: image).interpolation(.none).resizable().aspectRatio(contentMode: .fit).frame(height: 28)
+                        Button("Reset") { ArcadeAssets.resetImage(); refresh += 1 }
+                    } else {
+                        Text("Built-in mascot").foregroundStyle(.secondary)
+                    }
+                    Button("Choose…") { choose(images: true) }
+                }
+                HStack {
+                    Text("Pop-in sound")
+                    Spacer()
+                    if let sound = ArcadeAssets.soundURL {
+                        Text(sound.lastPathComponent).foregroundStyle(.secondary).lineLimit(1)
+                        Button("Reset") { ArcadeAssets.resetSound(); refresh += 1 }
+                    } else {
+                        Text("Built-in voice").foregroundStyle(.secondary)
+                    }
+                    Button("Choose…") { choose(images: false) }
+                }
+                Slider(value: $settings.stored.arcade.volume, in: 0...1) { Text("Volume") }
+                HStack {
+                    Text("HI-SCORE: \(ByteCountFormatter.string(fromByteCount: settings.stored.arcade.hiScoreBytes, countStyle: .file)) saved")
+                        .font(.custom(ArcadeAssets.fontName, size: 10))
+                    Spacer()
+                    Button("Test") { ArcadeDirector.shared.demo() }
+                }
+            }
+        } header: {
+            Text("Arcade")
+        } footer: {
+            Text("A 90s fighting-game finale for your conversions. Pick your own picture and sound — they stay on this Mac. Secret: ↑↑↓↓←→←→BA in the chip.")
+                .foregroundStyle(.secondary)
+        }
+        .id(refresh)
+    }
+
+    private func choose(images: Bool) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = images ? [.image] : [.audio]
+        panel.prompt = "Use"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        if images { try? ArcadeAssets.importImage(from: url) } else { try? ArcadeAssets.importSound(from: url) }
+        refresh += 1
     }
 }
 

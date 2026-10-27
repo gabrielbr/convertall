@@ -38,6 +38,10 @@ targets:
       - path: Sources/ConvertAll
       - path: Support/AppIcon.icns
         buildPhase: resources
+      - path: Support/Fonts/PressStart2P-Regular.ttf
+        buildPhase: resources
+      - path: Support/Fonts/OFL.txt
+        buildPhase: resources
     settings:
       base:
         PRODUCT_NAME: ConvertAll

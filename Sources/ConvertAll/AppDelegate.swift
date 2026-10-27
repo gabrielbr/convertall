@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         BackgroundServices.shared.apply()
         BackgroundServices.cleanClipboardFolder()
+        ArcadeAssets.registerFont()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

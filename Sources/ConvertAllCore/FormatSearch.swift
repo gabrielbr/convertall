@@ -19,6 +19,12 @@ public enum FormatSearch {
             .map(\.0)
     }
 
+    /// Relevance of `format` for what the user typed (0 = no match).
+    public static func score(_ format: FileFormat, query: String) -> Int {
+        let q = normalize(query)
+        return q.isEmpty ? 1 : score(format, q)
+    }
+
     static func score(_ format: FileFormat, _ q: String) -> Int {
         let name = normalize(format.displayName)
         if name == q { return 1000 }

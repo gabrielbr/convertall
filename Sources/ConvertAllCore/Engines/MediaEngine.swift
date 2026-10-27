@@ -10,43 +10,27 @@ public enum MediaEngine {
         return ImageConverter.findTool("ffmpeg")
     }
 
-    static func probe(_ url: URL, ffmpeg: URL) throws -> MediaProbe {
+    public static func probe(_ url: URL, ffmpeg: URL) throws -> MediaProbe {
         // Without an output FFmpeg prints the stream info and exits non-zero; that's expected.
         let result = try ProcessRunner.run(ffmpeg, ["-hide_banner", "-nostdin", "-i", url.path])
         return FFmpeg.parseProbe(result.output)
     }
 
     static func convert(
-        _ url: URL, from source: FileFormat, to target: FileFormat, options: ConversionOptions, task: ConversionTask
+        _ url: URL, from source: FileFormat, to target: FileFormat, options: ConversionOptions,
+        trim: ClosedRange<Double>? = nil, animated: Bool = false, task: ConversionTask
     ) throws -> URL {
         guard let ffmpeg = ffmpegURL else { throw ConversionError.engineMissing(target) }
         let probe = try probe(url, ffmpeg: ffmpeg)
-        let plan = FFmpeg.plan(from: source, to: target, probe: probe, options: options)
+        let plan = FFmpeg.plan(from: source, to: target, probe: probe, options: options, trim: trim, animated: animated)
         let produced = plan.ffmpegOutput(for: target)
 
         let work = try WorkDirectory()
         defer { work.remove() }
         let out = work.file("out.\(produced.preferredExtension)")
-
-        let share = plan.intermediate == nil ? 1.0 : 0.9
-        let duration = probe.duration ?? 0
-        var lastError = "FFmpeg couldn't convert this file"
-        var succeeded = false
-        for attempt in plan.attempts {
-            try task.checkCancelled()
-            let args = FFmpeg.baseArguments + ["-i", url.path] + attempt + [out.path]
-            let result = try ProcessRunner.run(ffmpeg, args, task: task) { line in
-                if duration > 0, let t = FFmpeg.parseProgressTime(line) { task.report(t / duration * share) }
-            }
-            let size = (try? out.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
-            if result.status == 0, size > 0 {
-                succeeded = true
-                break
-            }
-            lastError = FFmpeg.errorSummary(result.output)
-            try? FileManager.default.removeItem(at: out)
-        }
-        guard succeeded else { throw ConversionError.writeFailed(lastError) }
+        let attempts = plan.attempts.map { FFmpeg.baseArguments + plan.inputArguments + ["-i", url.path] + $0 + [out.path] }
+        try run(ffmpeg, attempts: attempts, duration: plan.outputDuration ?? 0, share: plan.intermediate == nil ? 1 : 0.9,
+                task: task, output: out)
 
         let destination = OutputNaming.destination(for: url, format: target)
         if plan.intermediate != nil {
@@ -56,6 +40,25 @@ public enum MediaEngine {
         }
         task.report(1)
         return try deliver(out, to: destination)
+    }
+
+    /// Tries each full argument list until one produces a non-empty `output`, reporting progress.
+    static func run(
+        _ ffmpeg: URL, attempts: [[String]], duration: Double, share: Double = 1,
+        task: ConversionTask, output: URL
+    ) throws {
+        var lastError = "FFmpeg couldn't convert this file"
+        for args in attempts {
+            try task.checkCancelled()
+            let fullArgs = args.first == "-hide_banner" ? args : FFmpeg.baseArguments + args
+            let result = try ProcessRunner.run(ffmpeg, fullArgs, task: task) { line in
+                if duration > 0, let t = FFmpeg.parseProgressTime(line) { task.report(t / duration * share) }
+            }
+            if result.status == 0, ImageConverter.fileSize(output) > 0 { return }
+            lastError = FFmpeg.errorSummary(result.output)
+            try? FileManager.default.removeItem(at: output)
+        }
+        throw ConversionError.writeFailed(lastError)
     }
 
     /// Used by the image engine: WebP/AVIF encoding and PNG quantisation.

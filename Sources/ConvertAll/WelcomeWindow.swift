@@ -193,8 +193,8 @@ private struct WelcomeView: View {
     private func choose() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
-        panel.allowedContentTypes = FileFormat.allCases.flatMap(\.typeIdentifiers).compactMap { UTType($0) }
+        panel.canChooseDirectories = true
+        panel.allowedContentTypes = FileFormat.allCases.flatMap(\.typeIdentifiers).compactMap { UTType($0) } + [.folder]
         panel.prompt = "Convert"
         guard panel.runModal() == .OK else { return }
         let urls = panel.urls

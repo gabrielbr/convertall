@@ -51,4 +51,15 @@ public enum OutputNaming {
             return folder.appendingPathComponent("\(base) \(number)").appendingPathExtension(format.preferredExtension)
         }
     }
+
+    /// Output of "Combine": `holiday.jpg` + others → `holiday (combined).pdf`, never overwriting.
+    public static func combined(
+        for first: URL, format: FileFormat,
+        fileExists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }
+    ) -> URL {
+        let named = first.deletingLastPathComponent()
+            .appendingPathComponent("\(first.deletingPathExtension().lastPathComponent) (combined)")
+            .appendingPathExtension(first.pathExtension)
+        return destination(for: named, format: format, fileExists: fileExists)
+    }
 }

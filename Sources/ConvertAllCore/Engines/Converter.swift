@@ -39,8 +39,8 @@ public enum Converter {
         return FileFormat(typeIdentifier: uti)
     }
 
-    public static func requirement(from source: FileFormat, to target: FileFormat) -> Requirement {
-        switch ConversionMatrix.engine(from: source, to: target) {
+    public static func requirement(from source: FileFormat, to target: FileFormat, animated: Bool = false) -> Requirement {
+        switch ConversionMatrix.engine(from: source, to: target, animated: animated) {
         case .image:
             return ImageConverter.needsMediaEngine(target) ? .mediaEngine : .ready
         case .media:
@@ -58,16 +58,19 @@ public enum Converter {
     /// `source == target` compresses the file in its own format.
     public static func convert(
         _ url: URL, from source: FileFormat, to target: FileFormat,
-        options: ConversionOptions = ConversionOptions(), task: ConversionTask = ConversionTask()
+        options: ConversionOptions = ConversionOptions(), trim: ClosedRange<Double>? = nil,
+        task: ConversionTask = ConversionTask()
     ) throws -> [URL] {
         try task.checkCancelled()
+        let animated = isAnimated(url, format: source)
         let outputs: [URL]
-        switch ConversionMatrix.engine(from: source, to: target) {
+        switch ConversionMatrix.engine(from: source, to: target, animated: animated) {
         case .image:
             outputs = [try ImageConverter.convert(url, to: target, options: options)]
             task.report(1)
         case .media:
-            outputs = [try MediaEngine.convert(url, from: source, to: target, options: options, task: task)]
+            outputs = [try MediaEngine.convert(url, from: source, to: target, options: options, trim: trim,
+                                               animated: animated, task: task)]
         case .document:
             outputs = try DocumentEngine.convert(url, from: source, to: target, options: options, task: task)
         case .office:
@@ -81,6 +84,11 @@ public enum Converter {
             throw ConversionError.alreadyOptimized
         }
         return outputs
+    }
+
+    /// GIF, animated WebP/PNG/HEICS: more than one frame.
+    public static func isAnimated(_ url: URL, format: FileFormat) -> Bool {
+        [.gif, .webp, .png, .heic].contains(format) && ImageConverter.frameCount(url) > 1
     }
 
     /// Bytes on disk, counting folder contents (multi-page output).

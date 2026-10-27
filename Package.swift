@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [
         .executable(name: "ConvertAll", targets: ["ConvertAll"]),
+        .executable(name: "convertall", targets: ["ConvertAllCLI"]),
         .library(name: "ConvertAllCore", targets: ["ConvertAllCore"]),
     ],
     targets: [
@@ -14,6 +15,8 @@ let package = Package(
         // core also builds and tests on Linux CI.
         .target(name: "ConvertAllCore"),
         .executableTarget(name: "ConvertAll", dependencies: ["ConvertAllCore"]),
+        // `convertall` command-line tool, bundled inside the app.
+        .executableTarget(name: "ConvertAllCLI", dependencies: ["ConvertAllCore"]),
         .testTarget(name: "ConvertAllCoreTests", dependencies: ["ConvertAllCore"]),
     ]
 )

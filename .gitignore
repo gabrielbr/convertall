@@ -4,3 +4,6 @@ build/
 .swiftpm/
 DerivedData/
 .DS_Store
+
+# XcodeGen output
+ConvertAll.xcodeproj/

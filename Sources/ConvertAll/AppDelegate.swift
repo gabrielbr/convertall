@@ -2,8 +2,9 @@
 import AppKit
 import ConvertAllCore
 
-/// ConvertAll runs as an accessory app: no Dock icon, no menu bar — it appears as a
-/// chip next to the pointer when you open an image with it, and quits itself when idle.
+/// ConvertAll runs as an accessory app: no Dock icon — it appears as a chip next to the
+/// pointer when you open a file with it, and quits itself when idle unless a background
+/// feature (menu bar, clipboard hotkey, watched folders, rename-to-convert) is on.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let services = ServiceProvider()
@@ -22,6 +23,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         ChipController.shared.onDidClose = { [weak self] in self?.scheduleIdleQuit() }
         WelcomeWindow.shared.onDidClose = { [weak self] in self?.scheduleIdleQuit() }
+        AppSettings.shared.onChange = { [weak self] in
+            BackgroundServices.shared.apply()
+            self?.scheduleIdleQuit()
+        }
+        BackgroundServices.shared.apply()
+        BackgroundServices.cleanClipboardFolder()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -32,8 +39,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showWelcomeIfLaunchedDirectly() {
-        if !receivedFiles { WelcomeWindow.shared.show() }
+        // Not when opening files, when a Shortcut launched us, or when the menu bar icon is there
+        // (e.g. opened at login).
+        guard !receivedFiles, !IntentActivity.started, !AppSettings.shared.stored.menuBar else {
+            return scheduleIdleQuit()
+        }
+        WelcomeWindow.shared.show()
     }
+
+    @objc func openSettings(_ sender: Any?) {
+        SettingsWindow.shared.show()
+    }
+
+    func windowClosed() { scheduleIdleQuit() }
 
     func application(_ application: NSApplication, open urls: [URL]) {
         receivedFiles = true
@@ -74,7 +92,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quitIfIdle() {
         guard !Updater.shared.isBusy else { return scheduleIdleQuit() }
-        if !ChipController.shared.isVisible, !WelcomeWindow.shared.isVisible { NSApp.terminate(nil) }
+        guard !AppSettings.shared.staysRunning else { return }
+        if !ChipController.shared.isVisible, !WelcomeWindow.shared.isVisible, !SettingsWindow.shared.isVisible {
+            NSApp.terminate(nil)
+        }
     }
 }
 
@@ -88,6 +109,7 @@ enum MainMenu {
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About ConvertAll", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(withTitle: "Check for Updates…", action: #selector(AppDelegate.checkForUpdates(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "Settings…", action: #selector(AppDelegate.openSettings(_:)), keyEquivalent: ",")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit ConvertAll", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu

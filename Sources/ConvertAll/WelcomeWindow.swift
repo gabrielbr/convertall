@@ -69,6 +69,8 @@ private struct WelcomeView: View {
             HStack(spacing: 8) {
                 Text("Version \(updater.currentVersion)")
                     .foregroundStyle(.tertiary)
+                Button("Settings…") { SettingsWindow.shared.show() }
+                    .buttonStyle(.link)
                 Spacer()
                 updateStatus
             }

@@ -37,6 +37,7 @@ public enum Requirement: Equatable, Sendable {
 public enum Converter {
     public static func sourceFormat(of url: URL) -> FileFormat? {
         if let f = FileFormat(url: url) { return f }
+        if let f = FileSniffer.detect(url: url) { return f }
         guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
               let uti = CGImageSourceGetType(src) as String?
         else { return nil }

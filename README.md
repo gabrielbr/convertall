@@ -92,6 +92,27 @@ Both run on your Mac with Apple's Vision framework. Nothing is uploaded and noth
 - **Text (OCR).** Images get a **Text** pill that recognises the text in photos, screenshots and scans and saves it as `.txt`, with the language detected automatically. PDFs without a text layer (scans) fall back to OCR on their own when you convert them to TXT, DOCX, RTF and the other text formats.
 - **Cutout.** Still images get a **Cutout** pill that keeps the main subject on a transparent background. The result is saved as `name (no background).png`, or in the same format if that format supports transparency (WebP, HEIC, TIFF). It needs macOS 14 or later.
 
+### Shortcuts, command line, clipboard, watched folders, rename-to-convert
+
+Open **Settings** with ⌘, from the welcome window or the menu bar icon. Everything here is off until you turn it on.
+
+- **Shortcuts.** The Shortcuts app gets these actions: **Convert Files**, **Make Files Smaller**, **Combine Files**, **Extract Text (OCR)** and **Remove Background**. Each one returns the new files (or the text), so actions can be chained.
+- **Command line.** `convertall` is bundled inside the app, and **Settings › Install…** links it into `/usr/local/bin`. Converted paths are printed one per line, and errors go to stderr. Examples:
+
+  ```sh
+  convertall *.heic --to jpeg --size 1920
+  convertall clip.mov --smaller --quality smaller
+  convertall scans/ --combine pdf
+  convertall talk.mp4 --to mp3 --trim 1:30-12:00 --install-engine
+  convertall screenshot.png --text
+  ```
+
+  It also works with Raycast and Alfred, and from Shortcuts' "Run Shell Script" action.
+- **Menu bar.** An optional icon with **Convert Files…**, **Convert Clipboard**, **Settings…** and **Check for Updates…**. Open at login is available too (built on macOS 13's login item support).
+- **Clipboard (⌥⌘V).** Copy an image or some files, press ⌥⌘V, and pick a format. The result goes onto the clipboard, ready to paste: as a picture for a single image, and as file references for anything else.
+- **Watched folders.** Add a folder and choose **Make smaller** or a target format, plus a quality. New files dropped into it are converted into its `Converted/` subfolder, and you get a notification for each one.
+- **Rename to convert.** In the folders you choose (Desktop and Downloads by default), rename `photo.jpg` to `photo.png` in Finder and ConvertAll really converts it. A content sniffer that reads the file's bytes catches the mismatch between the name and what's inside. The untouched original goes to the Trash.
+
 ### Design decisions
 
 - **The chip sits where your attention already is.** It opens next to the pointer you just used for the right-click, so your eyes don't have to move.
@@ -109,6 +130,9 @@ Both run on your Mac with Apple's Vision framework. Nothing is uploaded and noth
 - **It stays out of the way.** There's no Dock icon and no menu bar item. The app stays loaded for 2 minutes after the chip closes, so back-to-back conversions are instant, and then it quits itself.
 
 ## Build & install
+
+With [XcodeGen](https://github.com/yonaskolb/XcodeGen) installed (`brew install xcodegen`), the build script builds through Xcode. Xcode is needed for the Shortcuts actions, because it generates their App Intents metadata. Without XcodeGen, a plain SwiftPM build produces everything except the Shortcuts actions.
+
 
 You need macOS 13 or later and Xcode 15+ (or the matching Command Line Tools).
 
@@ -157,6 +181,7 @@ Sources/
     AppVersion.swift         version parsing and comparison for the updater
     FormatSearch.swift       ranking of what the user types ("jp" → JPEG, "song" → MP3)
     FolderScanner.swift      folders → the convertible files inside
+    FileSniffer.swift        identify files by their bytes (rename-to-convert, misnamed files)
     OutputNaming.swift       "photo.png", "photo 2.png", "report (PNG)/report 01.png" … never overwrite
     RGBAImage.swift          plain 8-bit RGBA buffer + alpha flattening
     Codecs/QOI|PNM|TGA       pure-Swift encoders/decoders (verified against Pillow)
@@ -178,12 +203,20 @@ Sources/
     ChipModel.swift          state: sections, search, highlight, trim, engine install, parallel run → done/failed
     Updater.swift            periodic update check and install
     Notifier.swift           "done" notifications with Show in Finder
+    Intents.swift            Shortcuts actions (App Intents)
+    AppSettings.swift        settings, open at login, command-line install
+    SettingsWindow.swift     the Settings window
+    BackgroundServices.swift menu bar, clipboard hotkey, watched folders, rename-to-convert
+    HotKey.swift             system-wide ⌥⌘V
+    FolderWatcher.swift      FSEvents wrapper
+  ConvertAllCLI/             the `convertall` command-line tool
     ChipView.swift           the chip UI
     WelcomeWindow.swift      first-launch guide, drop zone, extras and update status
 Support/
   Info.plist                 document types ("Open With"), Services, imported UTIs
   AppIcon.icns
-scripts/build-app.sh         SwiftPM → ConvertAll.app bundle
+project.yml                  XcodeGen spec (app + CLI) for release builds
+scripts/build-app.sh         Xcode (via XcodeGen) or SwiftPM → ConvertAll.app bundle
 ```
 
 ## Known limitations

@@ -63,6 +63,8 @@ final class ChipModel: ObservableObject {
 
     /// Corner of the chip nearest the pointer; the appear animation grows from there.
     var anchor: UnitPoint = .topLeading
+    /// Opened with ⌥⌘V: results also go onto the clipboard.
+    var clipboardMode = false
 
     var isHovering = false {
         didSet { if !isHovering, autoCloseDeferred { scheduleAutoClose(after: 0.8) } }
@@ -414,8 +416,25 @@ final class ChipModel: ObservableObject {
                 }
             }
             if reveal { NSWorkspace.shared.activateFileViewerSelecting(outputs) }
+            if clipboardMode { copyToClipboard(outputs) }
         }
         if failures.isEmpty { scheduleAutoClose(after: reveal ? 0.3 : (tookLong ? 6 : 2.4)) }
+    }
+
+    /// Files as file references (paste into Finder, Mail, Slack…) plus the picture itself for
+    /// a single image (paste into documents and chat boxes).
+    private func copyToClipboard(_ outputs: [URL]) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        var items: [NSPasteboardWriting] = outputs.map { $0 as NSURL }
+        if outputs.count == 1, FileFormat(url: outputs[0])?.category == .image, let image = NSImage(contentsOf: outputs[0]) {
+            items = [image]
+            pb.writeObjects(items)
+            pb.addTypes([.fileURL], owner: nil)
+            pb.setString(outputs[0].absoluteString, forType: .fileURL)
+            return
+        }
+        pb.writeObjects(items)
     }
 
     /// Runs blocking conversion work off the main thread (and off Swift's cooperative pool).

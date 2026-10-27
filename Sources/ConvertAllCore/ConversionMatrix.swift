@@ -60,8 +60,15 @@ public enum ConversionMatrix {
         return order.map { cat in (cat, common.filter { $0.category == cat }) }
     }
 
+    /// Formats that offer "Compress" (same format, smaller file).
+    public static let compressible: Set<FileFormat> = [
+        .jpeg, .png, .heic, .webp, .avif, .gif, .mp4, .mov, .webm, .mkv, .mp3, .m4a, .aac, .ogg, .opus, .pdf,
+    ]
+
     public static func engine(from source: FileFormat, to target: FileFormat) -> EngineKind {
-        switch (source.category, target.category) {
+        // GIF → smaller GIF keeps its animation only through FFmpeg.
+        if source == .gif, target == .gif { return .media }
+        return switch (source.category, target.category) {
         case (.image, .image): .image
         case (.video, _), (.audio, _), (.image, .video): .media
         case (.spreadsheet, _), (.presentation, _): .office

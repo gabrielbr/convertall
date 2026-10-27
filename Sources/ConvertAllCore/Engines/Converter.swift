@@ -7,6 +7,7 @@ public enum ConversionError: LocalizedError {
     case engineMissing(FileFormat)
     case writeFailed(String)
     case noText
+    case alreadyOptimized
 
     public var errorDescription: String? {
         switch self {
@@ -14,6 +15,7 @@ public enum ConversionError: LocalizedError {
         case .engineMissing(let format): "\(format.displayName) conversion needs an extra component."
         case .writeFailed(let detail): "Conversion failed: \(detail)"
         case .noText: "This PDF has no selectable text (it may be a scan)."
+        case .alreadyOptimized: "Already as small as it gets — no smaller version was saved."
         }
     }
 }
@@ -53,21 +55,43 @@ public enum Converter {
 
     /// Converts one file. Returns the created file(s) — several for multi-page
     /// documents exported as images (placed together in a folder).
+    /// `source == target` compresses the file in its own format.
     public static func convert(
-        _ url: URL, from source: FileFormat, to target: FileFormat, task: ConversionTask = ConversionTask()
+        _ url: URL, from source: FileFormat, to target: FileFormat,
+        options: ConversionOptions = ConversionOptions(), task: ConversionTask = ConversionTask()
     ) throws -> [URL] {
         try task.checkCancelled()
+        let outputs: [URL]
         switch ConversionMatrix.engine(from: source, to: target) {
         case .image:
-            let out = try ImageConverter.convert(url, to: target)
+            outputs = [try ImageConverter.convert(url, to: target, options: options)]
             task.report(1)
-            return [out]
         case .media:
-            return [try MediaEngine.convert(url, from: source, to: target, task: task)]
+            outputs = [try MediaEngine.convert(url, from: source, to: target, options: options, task: task)]
         case .document:
-            return try DocumentEngine.convert(url, from: source, to: target, task: task)
+            outputs = try DocumentEngine.convert(url, from: source, to: target, options: options, task: task)
         case .office:
-            return try OfficeEngine.convert(url, from: source, to: target, task: task)
+            outputs = try OfficeEngine.convert(url, from: source, to: target, options: options, task: task)
+        }
+
+        // A "Compress" that didn't shrink anything isn't worth keeping.
+        if source == target, outputs.count == 1,
+           ImageConverter.fileSize(outputs[0]) >= ImageConverter.fileSize(url) {
+            try? FileManager.default.removeItem(at: outputs[0])
+            throw ConversionError.alreadyOptimized
+        }
+        return outputs
+    }
+
+    /// Bytes on disk, counting folder contents (multi-page output).
+    public static func totalSize(of urls: [URL]) -> Int64 {
+        let fm = FileManager.default
+        return urls.reduce(Int64(0)) { sum, url in
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: url.path, isDirectory: &isDir) else { return sum }
+            if !isDir.boolValue { return sum + Int64(ImageConverter.fileSize(url)) }
+            let files = fm.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey])?.compactMap { $0 as? URL } ?? []
+            return sum + files.reduce(Int64(0)) { $0 + Int64(ImageConverter.fileSize($1)) }
         }
     }
 }

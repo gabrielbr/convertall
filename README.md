@@ -48,6 +48,23 @@ Pills that need an extra show a small ⬇︎ badge. Everything else works offlin
 
 Esc clears what you typed, and a second Esc closes the chip. Clicking anywhere else also closes it, except while a conversion is running.
 
+### Make it smaller, and the options strip
+
+- **Make smaller.** JPEG, PNG, HEIC, WebP, AVIF, GIF, MP4, MOV, WebM, MKV, MP3, M4A, AAC, OGG, Opus and PDF files get a **Smaller** pill. It re-encodes the file in its own format:
+  - **Videos** become HEVC, about half the size of H.264.
+  - **PNGs** are reduced to an 8-bit palette with transparency kept, like TinyPNG. This needs the media engine. Without it, PNGs get a plain re-encode.
+  - **PDFs** get their images recompressed.
+
+  The success message shows the saving (for example `2.4 MB → 680 KB (−72%)`). If the result wouldn't be smaller, nothing is saved.
+- **Options strip.** Three compact controls sit under the grid. Your choices are remembered, and **Reset** puts them back:
+  - **Quality:** Smaller, Balanced or Best. Applies to image quality, H.264/HEVC/VP9 quality, and audio bitrate.
+  - **Size:** 50%, a maximum of 3840, 1920, 1280 or 640 px, or **Under 500 KB, 1, 2, 5, 10 or 25 MB**.
+    - For images, ConvertAll lowers the quality first and then the dimensions until the file fits.
+    - For video and audio, it calculates a bitrate from the clip's length.
+  - **No metadata:** removes location, camera and author details.
+- **Hardware video encoding.** Video is encoded with Apple's VideoToolbox, which is several times faster and much lighter on the battery. If that fails, ConvertAll falls back to the x264 software encoder.
+- **Notifications.** When a long conversion finishes while you're in another app, you get a notification with a **Show in Finder** button.
+
 ### Design decisions
 
 - **The chip sits where your attention already is.** It opens next to the pointer you just used for the right-click, so your eyes don't have to move.
@@ -108,6 +125,7 @@ Sources/
   ConvertAllCore/            platform-independent where possible, unit-tested
     FileFormat.swift         catalogue of all 40 formats: category, names, extensions, UTIs, aliases, blurbs
     ConversionMatrix.swift   what converts to what, chip sections, which engine handles each pair
+    ConversionOptions.swift  quality / size / metadata options and the encoder settings they map to
     FFmpeg.swift             FFmpeg argument plans (stream copy first, re-encode fallback), output parsers
     AppVersion.swift         version parsing and comparison for the updater
     FormatSearch.swift       ranking of what the user types ("jp" → JPEG, "song" → MP3)
@@ -128,6 +146,7 @@ Sources/
     ChipController.swift     floating NSPanel, pointer-relative placement, keyboard, dismissal
     ChipModel.swift          state: sections, search, highlight, engine install, convert → done/failed
     Updater.swift            periodic update check and install
+    Notifier.swift           "done" notifications with Show in Finder
     ChipView.swift           the chip UI
     WelcomeWindow.swift      first-launch guide, drop zone, extras and update status
 Support/
@@ -141,5 +160,5 @@ scripts/build-app.sh         SwiftPM → ConvertAll.app bundle
 - Animated GIF, WebP and HEIC sources become images from their first frame only. GIF to video keeps the animation.
 - Video to a still image keeps one representative frame.
 - PDF to DOCX, ODT, RTF and the other text formats keeps the text and basic styling, but not the exact layout.
-- There's no settings UI yet. Quality presets are fixed (images at 85%, H.264 at CRF 20, VP9 at CRF 32), and output goes next to the original.
+- There's no settings UI yet. Output always goes next to the original.
 - Top-level placement in Finder's context menu would need a Finder Sync extension. "Open With" and Quick Actions don't need one.

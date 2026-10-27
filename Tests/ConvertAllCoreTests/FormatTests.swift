@@ -165,13 +165,14 @@ final class FFmpegTests: XCTestCase {
     func testPlansCopyWhenCompatible() {
         let probe = FFmpeg.parseProbe(probeOutput)
         let mp4 = FFmpeg.plan(from: .mov, to: .mp4, probe: probe)
-        XCTAssertEqual(mp4.attempts.count, 2)
+        XCTAssertEqual(mp4.attempts.count, 3)
         XCTAssertTrue(mp4.attempts[0].contains("copy"))
-        XCTAssertTrue(mp4.attempts[1].contains("libx264"))
+        XCTAssertTrue(mp4.attempts[1].contains("h264_videotoolbox"), "hardware encoder before software")
+        XCTAssertTrue(mp4.attempts[2].contains("libx264"))
 
         let vp9 = MediaProbe(duration: 10, videoCodec: "vp9", audioCodec: "opus")
         let fromWebm = FFmpeg.plan(from: .webm, to: .mp4, probe: vp9)
-        XCTAssertEqual(fromWebm.attempts.count, 1, "VP9 can't be copied into MP4 for Apple players")
+        XCTAssertEqual(fromWebm.attempts.count, 2, "VP9 can't be copied into MP4 for Apple players")
         XCTAssertEqual(FFmpeg.plan(from: .mp4, to: .webm, probe: vp9).attempts.count, 2)
 
         let m4a = FFmpeg.plan(from: .mov, to: .m4a, probe: probe)
@@ -189,5 +190,53 @@ final class FFmpegTests: XCTestCase {
         XCTAssertTrue(FFmpeg.plan(from: .png, to: .avif, probe: MediaProbe()).attempts[0].contains("libaom-av1"))
         // A video → WebP still goes through a PNG frame first.
         XCTAssertEqual(FFmpeg.plan(from: .mov, to: .webp, probe: probe).intermediate, .png)
+    }
+
+    func testOptionsChangeTheEncode() {
+        let probe = MediaProbe(duration: 100, videoCodec: "h264", audioCodec: "aac")
+
+        // Compress: same format, no stream copy, HEVC for the big saving.
+        let squeeze = FFmpeg.plan(from: .mp4, to: .mp4, probe: probe)
+        XCTAssertFalse(squeeze.attempts.contains { $0.contains("copy") })
+        XCTAssertTrue(squeeze.attempts[0].contains("hevc_videotoolbox"))
+        XCTAssertTrue(squeeze.attempts[0].contains("hvc1"))
+
+        // Resizing also rules out copying, and shows up in the filter.
+        let half = FFmpeg.plan(from: .mov, to: .mp4, probe: probe, options: ConversionOptions(size: .half))
+        XCTAssertEqual(half.attempts.count, 2)
+        XCTAssertTrue(half.attempts[0].contains("scale=trunc(iw/4)*2:trunc(ih/4)*2"))
+
+        // "Under 10 MB" for 100 s → a bitrate budget instead of constant quality.
+        let budget = FFmpeg.plan(from: .mov, to: .mp4, probe: probe, options: ConversionOptions(size: .targetBytes(10_000_000)))
+        XCTAssertTrue(budget.attempts[0].contains("-b:v"))
+        XCTAssertFalse(budget.attempts[0].contains("-q:v"))
+
+        let stripped = FFmpeg.plan(from: .flac, to: .mp3, probe: MediaProbe(audioCodec: "flac"),
+                                   options: ConversionOptions(stripMetadata: true))
+        XCTAssertTrue(stripped.attempts[0].contains("-1"))
+
+        let smaller = FFmpeg.plan(from: .wav, to: .mp3, probe: MediaProbe(), options: ConversionOptions(quality: .smaller))
+        XCTAssertTrue(smaller.attempts[0].contains("5"))
+
+        XCTAssertTrue(FFmpeg.plan(from: .png, to: .png, probe: MediaProbe()).attempts[0].joined().contains("palettegen"))
+        XCTAssertEqual(ConversionMatrix.engine(from: .gif, to: .gif), .media)
+    }
+
+    func testBitrateBudget() {
+        let b = ConversionOptions.bitrateBudget(bytes: 10_000_000, duration: 100, hasAudio: true)!
+        XCTAssertEqual(b.audio, 91)
+        XCTAssertEqual(b.video + b.audio, 760)
+        XCTAssertNil(ConversionOptions.bitrateBudget(bytes: 10_000_000, duration: nil, hasAudio: true))
+        XCTAssertEqual(ConversionOptions.bitrateBudget(bytes: 1000, duration: 600, hasAudio: false)?.video, 50, "floor")
+    }
+
+    func testSizeScaling() {
+        XCTAssertTrue(ConversionOptions.Size.half.scaled(width: 4000, height: 3000) == (2000, 1500))
+        XCTAssertTrue(ConversionOptions.Size.maxDimension(1920).scaled(width: 4000, height: 3000) == (1920, 1440))
+        XCTAssertTrue(ConversionOptions.Size.maxDimension(1920).scaled(width: 800, height: 600) == (800, 600), "never upscale")
+        XCTAssertEqual(ConversionOptions.Size.targetBytes(5_000_000).shortTitle, "≤ 5 MB")
+        XCTAssertEqual(ConversionOptions.Size.targetBytes(500_000).title, "Under 500 KB")
+        let data = try! JSONEncoder().encode(ConversionOptions(quality: .best, size: .maxDimension(1280), stripMetadata: true))
+        XCTAssertEqual(try! JSONDecoder().decode(ConversionOptions.self, from: data).size, .maxDimension(1280))
     }
 }

@@ -6,9 +6,15 @@ import PDFKit
 /// Text documents with no extra install: DOCX, DOC, ODT, RTF, TXT and HTML via the
 /// Cocoa text system; PDF via PDFKit. Images come from rendered PDF pages.
 enum DocumentEngine {
-    static func convert(_ url: URL, from source: FileFormat, to target: FileFormat, task: ConversionTask) throws -> [URL] {
+    static func convert(
+        _ url: URL, from source: FileFormat, to target: FileFormat, options: ConversionOptions, task: ConversionTask
+    ) throws -> [URL] {
         let work = try WorkDirectory()
         defer { work.remove() }
+
+        if source == .pdf, target == .pdf {
+            return [try compressPDF(url, options: options, work: work)]
+        }
 
         if target.category == .image {
             let pdf: URL
@@ -19,7 +25,7 @@ enum DocumentEngine {
                 try writePDF(try read(url, as: source), to: pdf)
             }
             task.report(0.2)
-            return try PDFRasterizer.export(pdf, as: target, namedAfter: url, task: task, progressRange: 0.2...1)
+            return try PDFRasterizer.export(pdf, as: target, namedAfter: url, options: options, task: task, progressRange: 0.2...1)
         }
 
         let text = try read(url, as: source)
@@ -32,6 +38,20 @@ enum DocumentEngine {
         }
         task.report(1)
         return [try deliver(out, to: OutputNaming.destination(for: url, format: target))]
+    }
+
+    /// PDFKit's own "reduce size": images re-encoded as JPEG and downsampled for screens.
+    static func compressPDF(_ url: URL, options: ConversionOptions, work: WorkDirectory) throws -> URL {
+        guard let pdf = PDFDocument(url: url) else { throw ConversionError.unreadable(url.lastPathComponent) }
+        if options.stripMetadata { pdf.documentAttributes = [:] }
+        var writeOptions: [PDFDocumentWriteOption: Any] = [:]
+        if #available(macOS 13.4, *) {
+            writeOptions[.saveImagesAsJPEGOption] = true
+            if options.quality != .best { writeOptions[.optimizeImagesForScreenOption] = true }
+        }
+        let out = work.file("out.pdf")
+        guard pdf.write(to: out, withOptions: writeOptions) else { throw ConversionError.writeFailed("couldn't save the PDF") }
+        return try deliver(out, to: OutputNaming.destination(for: url, format: .pdf))
     }
 
     // MARK: Reading
@@ -148,7 +168,7 @@ enum PDFRasterizer {
     static let maxPages = 500
 
     static func export(
-        _ pdfURL: URL, as format: FileFormat, namedAfter source: URL,
+        _ pdfURL: URL, as format: FileFormat, namedAfter source: URL, options: ConversionOptions,
         task: ConversionTask, progressRange: ClosedRange<Double> = 0...1
     ) throws -> [URL] {
         guard let pdf = PDFDocument(url: pdfURL), pdf.pageCount > 0 else {
@@ -168,7 +188,7 @@ enum PDFRasterizer {
             try task.checkCancelled()
             guard let page = pdf.page(at: i) else { continue }
             let image = try render(page)
-            try ImageConverter.export(image, as: format, to: destination)
+            try ImageConverter.export(image, as: format, to: destination, options: options)
             let span = progressRange.upperBound - progressRange.lowerBound
             task.report(progressRange.lowerBound + span * Double(i + 1) / Double(count))
         }

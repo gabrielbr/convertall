@@ -20,9 +20,9 @@ final class ChipModel: ObservableObject {
     }
 
     struct Section: Identifiable {
-        let category: FormatCategory
+        let id: String
+        let title: String
         let formats: [FileFormat]
-        var id: FormatCategory { category }
     }
 
     static let columns = 4
@@ -34,6 +34,9 @@ final class ChipModel: ObservableObject {
     private let rows: [[FileFormat]]
     let title: String
     let subtitle: String
+    /// The format offered as "Smaller" (same format, re-encoded), when the selection allows it.
+    let compressFormat: FileFormat?
+    private let inputBytes: Int64
 
     @Published var query = "" {
         didSet { if let best = matches.first { highlighted = best } }
@@ -43,6 +46,12 @@ final class ChipModel: ObservableObject {
     @Published var thumbnail: NSImage
     @Published private(set) var update: AvailableUpdate?
     @Published private(set) var updateState: Updater.State = .idle
+    /// Quality / size / metadata from the options strip; remembered between chips.
+    @Published var options = OptionsStore.load() {
+        didSet { OptionsStore.save(options) }
+    }
+    /// Before → after bytes for the finished message.
+    @Published private(set) var savings: (before: Int64, after: Int64)?
 
     /// Corner of the chip nearest the pointer; the appear animation grows from there.
     var anchor: UnitPoint = .topLeading
@@ -63,9 +72,14 @@ final class ChipModel: ObservableObject {
         sources = detected.compactMap { $0 }
         let infos = files.map(ImageConverter.info(for:))
 
-        sections = detected.contains(nil) ? [] : ConversionMatrix.sections(for: sources).map {
-            Section(category: $0.category, formats: $0.formats)
+        let distinct = Set(sources)
+        compressFormat = (!detected.contains(nil) && distinct.count == 1 && ConversionMatrix.compressible.contains(sources[0]))
+            ? sources[0] : nil
+        var sections = detected.contains(nil) ? [] : ConversionMatrix.sections(for: sources).map {
+            Section(id: $0.category.rawValue, title: $0.category.title, formats: $0.formats)
         }
+        if let compressFormat { sections.insert(Section(id: "compress", title: "Make smaller", formats: [compressFormat]), at: 0) }
+        self.sections = sections
         formats = sections.flatMap(\.formats)
         rows = sections.flatMap { section in
             stride(from: 0, to: section.formats.count, by: Self.columns).map {
@@ -74,6 +88,7 @@ final class ChipModel: ObservableObject {
         }
 
         let totalBytes = infos.compactMap(\.byteCount).reduce(0, +)
+        inputBytes = Int64(totalBytes)
         let sizeText = ByteCountFormatter.string(fromByteCount: Int64(totalBytes), countStyle: .file)
         if files.count == 1, let info = infos.first {
             title = files[0].lastPathComponent
@@ -126,14 +141,22 @@ final class ChipModel: ObservableObject {
         return .ready
     }
 
+    func isCompress(_ format: FileFormat) -> Bool { format == compressFormat }
+
+    func blurb(for format: FileFormat) -> String {
+        isCompress(format) ? "Same format, smaller file" : format.blurb
+    }
+
     var footnote: String {
         guard let f = highlighted else { return "" }
         switch requirement(for: f) {
-        case .ready: return f.blurb
-        case .mediaEngine: return "\(f.blurb) · one-time engine download"
-        case .libreOffice: return "\(f.blurb) · needs LibreOffice (free)"
+        case .ready: return blurb(for: f)
+        case .mediaEngine: return "\(blurb(for: f)) · one-time engine download"
+        case .libreOffice: return "\(blurb(for: f)) · needs LibreOffice (free)"
         }
     }
+
+    func resetOptions() { options = ConversionOptions() }
 
     // MARK: - Actions
 
@@ -172,8 +195,10 @@ final class ChipModel: ObservableObject {
     }
 
     private func start(_ format: FileFormat, reveal: Bool) {
-        RecentFormats.record(format)
+        if !isCompress(format) { RecentFormats.record(format) }
+        savings = nil
         phase = .converting(format, progress: 0, done: 0, total: files.count)
+        let options = options
         let started = Date()
         let jobs = Array(zip(files, sources))
         let box = WeakBox(self)
@@ -192,7 +217,7 @@ final class ChipModel: ObservableObject {
                 currentTask = task
                 do {
                     let made = try await Task.detached(priority: .userInitiated) {
-                        try Converter.convert(file, from: source, to: format, task: task)
+                        try Converter.convert(file, from: source, to: format, options: options, task: task)
                     }.value
                     outputs += made
                 } catch is CancellationError {
@@ -211,18 +236,38 @@ final class ChipModel: ObservableObject {
                 withAnimation(.easeOut(duration: 0.15)) { phase = outputs.isEmpty ? .picking : .finished(format, outputs: outputs, failures: []) }
                 return
             }
+            let after = outputs.isEmpty ? 0 : Converter.totalSize(of: outputs)
+            if failures.isEmpty, inputBytes > 0, after > 0 { savings = (inputBytes, after) }
             withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                 phase = .finished(format, outputs: outputs, failures: failures)
             }
             let tookLong = Date().timeIntervalSince(started) > 4
             if !outputs.isEmpty {
                 NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
-                // Long jobs: the user has probably looked away — a soft chime says it's done.
-                if tookLong { NSSound(named: "Glass")?.play() }
+                // Long jobs: the user has probably looked away — a soft chime says it's done,
+                // and a notification (with "Show in Finder") if they're in another app.
+                if tookLong {
+                    NSSound(named: "Glass")?.play()
+                    if !NSApp.isActive {
+                        Notifier.shared.post(
+                            title: outputs.count == 1 ? "Converted to \(format.displayName)" : "\(outputs.count) files converted to \(format.displayName)",
+                            body: [outputs.count == 1 ? outputs[0].lastPathComponent : nil, savingsText].compactMap { $0 }.joined(separator: " · "),
+                            files: outputs)
+                    }
+                }
                 if reveal { NSWorkspace.shared.activateFileViewerSelecting(outputs) }
             }
             if failures.isEmpty { scheduleAutoClose(after: reveal ? 0.3 : (tookLong ? 6 : 2.4)) }
         }
+    }
+
+    /// "2.4 MB → 680 KB (−72%)" — shown when the result's size is worth mentioning.
+    var savingsText: String? {
+        guard let s = savings else { return nil }
+        let fmt = { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
+        let change = Double(s.after - s.before) / Double(s.before) * 100
+        guard abs(change) >= 1 else { return "\(fmt(s.after))" }
+        return "\(fmt(s.before)) → \(fmt(s.after)) (\(change < 0 ? "−" : "+")\(Int(abs(change).rounded()))%)"
     }
 
     func cancelConversion() {
@@ -346,6 +391,22 @@ final class ChipModel: ObservableObject {
             guard let image = rep?.nsImage else { return }
             DispatchQueue.main.async { box.value?.thumbnail = image }
         }
+    }
+}
+
+/// The options strip's settings, remembered across chips.
+enum OptionsStore {
+    private static let key = "conversionOptions"
+
+    static func load() -> ConversionOptions {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let options = try? JSONDecoder().decode(ConversionOptions.self, from: data)
+        else { return ConversionOptions() }
+        return options
+    }
+
+    static func save(_ options: ConversionOptions) {
+        UserDefaults.standard.set(try? JSONEncoder().encode(options), forKey: key)
     }
 }
 

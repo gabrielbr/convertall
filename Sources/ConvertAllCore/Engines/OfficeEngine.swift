@@ -26,7 +26,9 @@ public enum OfficeEngine {
             .appendingPathComponent("ConvertAll/LibreOfficeProfile", isDirectory: true)
     }
 
-    static func convert(_ url: URL, from source: FileFormat, to target: FileFormat, task: ConversionTask) throws -> [URL] {
+    static func convert(
+        _ url: URL, from source: FileFormat, to target: FileFormat, options: ConversionOptions, task: ConversionTask
+    ) throws -> [URL] {
         guard let soffice = sofficeURL else { throw ConversionError.engineMissing(target) }
         let work = try WorkDirectory()
         defer { work.remove() }
@@ -51,7 +53,7 @@ public enum OfficeEngine {
 
         if target.category == .image {
             task.report(0.5)
-            return try PDFRasterizer.export(out, as: target, namedAfter: url, task: task, progressRange: 0.5...1)
+            return try PDFRasterizer.export(out, as: target, namedAfter: url, options: options, task: task, progressRange: 0.5...1)
         }
         task.report(1)
         return [try deliver(out, to: OutputNaming.destination(for: url, format: target))]

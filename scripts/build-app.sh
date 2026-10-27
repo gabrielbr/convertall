@@ -54,6 +54,7 @@ else
   cp "$BIN_DIR/convertall" "$APP/Contents/Helpers/convertall"
   cp Support/Info.plist "$APP/Contents/Info.plist"
   cp Support/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+  cp Support/Fonts/PressStart2P-Regular.ttf Support/Fonts/OFL.txt "$APP/Contents/Resources/"
   printf 'APPL????' > "$APP/Contents/PkgInfo"
   # CI stamps a monotonically increasing build number (CFBundleVersion).
   plutil -replace CFBundleVersion -string "${BUILD_NUMBER:-1}" "$APP/Contents/Info.plist"

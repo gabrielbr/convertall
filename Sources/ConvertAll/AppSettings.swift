@@ -19,6 +19,34 @@ final class AppSettings: ObservableObject {
         var target: FileFormat? { FileFormat(rawValue: action) }
     }
 
+    /// 90s arcade skin. The pop-in picture and sound are the user's own files, copied into
+    /// Application Support (never bundled with the app).
+    struct Arcade: Codable, Equatable {
+        var enabled = false
+        /// Big "CONVERTLY!" in the middle of the screen when a conversion finishes.
+        var announcer = true
+        /// The corner pop-in (with its sound) when several files or a folder finish.
+        var popIn = true
+        /// ROUND 1 · FIGHT!, hit combos, FLAWLESS VICTORY, K.O., PERFECT!
+        var extras = true
+        var volume: Double = 0.8
+        /// All-time bytes saved by conversions — the HI-SCORE.
+        var hiScoreBytes: Int64 = 0
+
+        init() {}
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            let d = Arcade()
+            enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? d.enabled
+            announcer = try c.decodeIfPresent(Bool.self, forKey: .announcer) ?? d.announcer
+            popIn = try c.decodeIfPresent(Bool.self, forKey: .popIn) ?? d.popIn
+            extras = try c.decodeIfPresent(Bool.self, forKey: .extras) ?? d.extras
+            volume = try c.decodeIfPresent(Double.self, forKey: .volume) ?? d.volume
+            hiScoreBytes = try c.decodeIfPresent(Int64.self, forKey: .hiScoreBytes) ?? d.hiScoreBytes
+        }
+    }
+
     struct Stored: Codable, Equatable {
         var menuBar = false
         var clipboardHotkey = false
@@ -27,6 +55,22 @@ final class AppSettings: ObservableObject {
             FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent($0).path
         }
         var watched: [WatchRule] = []
+        var arcade = Arcade()
+
+        init() {}
+
+        /// Every field falls back to its default, so settings saved by older versions survive
+        /// when new options are added.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            let d = Stored()
+            menuBar = try c.decodeIfPresent(Bool.self, forKey: .menuBar) ?? d.menuBar
+            clipboardHotkey = try c.decodeIfPresent(Bool.self, forKey: .clipboardHotkey) ?? d.clipboardHotkey
+            renameToConvert = try c.decodeIfPresent(Bool.self, forKey: .renameToConvert) ?? d.renameToConvert
+            renameFolders = try c.decodeIfPresent([String].self, forKey: .renameFolders) ?? d.renameFolders
+            watched = try c.decodeIfPresent([WatchRule].self, forKey: .watched) ?? d.watched
+            arcade = try c.decodeIfPresent(Arcade.self, forKey: .arcade) ?? d.arcade
+        }
     }
 
     @Published var stored: Stored {

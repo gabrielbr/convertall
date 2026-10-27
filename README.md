@@ -130,6 +130,21 @@ Open **Settings** with ⌘, from the welcome window or the menu bar icon. Everyt
   - If you've already installed LibreOffice yourself, ConvertAll uses that instead.
   - On the command line, `convertall --install-engine` downloads whichever engine is missing.
 
+### Arcade mode (90s fighting-game skin)
+
+Turn it on in **Settings › Arcade**, or type **↑↑↓↓←→←→BA** in the chip.
+
+- **CONVERTLY!** is slammed into the middle of the screen in chunky metallic letters, with a shake and an announcer voice, when a conversion finishes.
+- **Corner pop-in.** When several files or a folder finish, a character peeks in from the bottom-right corner and plays its sound.
+- **Extras.**
+  - **ROUND n · FIGHT!** when a batch starts.
+  - A **HIT COMBO** counter as files finish.
+  - **FLAWLESS VICTORY** when nothing fails, **PERFECT!** when a file shrinks by 70% or more, and **K.O.** when everything fails.
+- **HI-SCORE:** the total megabytes you've ever saved.
+- **Your own picture and sound.** Settings › Arcade › *Choose…* copies them into `~/Library/Application Support/ConvertAll/Arcade`. They stay on your Mac and are never bundled or published. Without them you get an original pixel mascot and a synthesized "Converty!".
+- **Reduce Motion.** If Reduce Motion is on in macOS, the effects fade in and out instead of moving.
+- **Font.** The arcade font is [Press Start 2P](https://fonts.google.com/specimen/Press+Start+2P), under the SIL Open Font License. Its license is in `Support/Fonts/OFL.txt`.
+
 ### Design decisions
 
 - **The chip sits where your attention already is.** It opens next to the pointer you just used for the right-click, so your eyes don't have to move.
@@ -227,6 +242,7 @@ Sources/
     BackgroundServices.swift menu bar, clipboard hotkey, watched folders, rename-to-convert
     HotKey.swift             system-wide ⌥⌘V
     FolderWatcher.swift      FSEvents wrapper
+    Arcade/                  arcade mode: ArcadeDirector (events, sound), ArcadeOverlay (the stage)
   ConvertAllCLI/             the `convertall` command-line tool
 Extensions/FinderSync/       Finder right-click menu extension (FinderMenu.appex)
     ChipView.swift           the chip UI

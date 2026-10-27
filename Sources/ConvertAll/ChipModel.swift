@@ -72,6 +72,10 @@ final class ChipModel: ObservableObject {
     private var autoCloseDeferred = false
     private var autoCloseTask: Task<Void, Never>?
     private var runningTasks: [ConversionTask] = []
+    /// Input files in the current run (2+ → batch finale in arcade mode).
+    private var runInputs = 0
+    /// Last keys pressed, for the Konami code.
+    private var recentKeys: [UInt16] = []
     private var slotProgress: [Double] = []
     private var completed = 0
     private var subscriptions: Set<AnyCancellable> = []
@@ -312,6 +316,8 @@ final class ChipModel: ObservableObject {
         let started = Date()
         let box = WeakBox(self)
         let before = jobs.map { fileBytes[$0] }.reduce(0, +)
+        runInputs = jobs.count
+        ArcadeDirector.shared.batchStarted(count: jobs.count)
 
         if case .combine(let target) = action {
             let files = files, sources = sources
@@ -375,6 +381,7 @@ final class ChipModel: ObservableObject {
                     }
                     completed += 1
                     report(action, slot: k, progress: 1)
+                    if case .success = result { ArcadeDirector.shared.fileFinished(total: jobs.count) }
                     if !cancelled, next < jobs.count {
                         group.addTask(operation: job(next))
                         next += 1
@@ -407,6 +414,10 @@ final class ChipModel: ObservableObject {
         runningTasks = []
         let after = outputs.isEmpty ? 0 : Converter.totalSize(of: outputs)
         if failures.isEmpty, before > 0, after > 0 { savings = (before, after) }
+        ArcadeDirector.shared.finished(
+            outputs: outputs.count, failures: failures.count, inputs: runInputs,
+            saved: after > 0 && after < before ? before - after : 0,
+            ratio: after > 0 && before > 0 ? 1 - Double(after) / Double(before) : nil)
         withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
             phase = .finished(action, outputs: outputs, failures: failures, skipped: skipped)
         }
@@ -515,6 +526,7 @@ final class ChipModel: ObservableObject {
 
     /// Returns true when the key was consumed.
     func handleKey(_ event: NSEvent) -> Bool {
+        if konami(event.keyCode) { return true }
         let cmd = event.modifierFlags.contains(.command)
         switch event.keyCode {
         case 53:  // esc
@@ -558,6 +570,18 @@ final class ChipModel: ObservableObject {
             }
         }
         return false
+    }
+
+    /// ↑↑↓↓←→←→BA toggles arcade mode.
+    private func konami(_ key: UInt16) -> Bool {
+        let code: [UInt16] = [126, 126, 125, 125, 123, 124, 123, 124, 11, 0]
+        recentKeys = Array((recentKeys + [key]).suffix(code.count))
+        guard recentKeys == code else { return false }
+        recentKeys = []
+        AppSettings.shared.stored.arcade.enabled.toggle()
+        ArcadeDirector.shared.cheatCode(enabled: AppSettings.shared.stored.arcade.enabled)
+        query = ""
+        return true
     }
 
     var isBusy: Bool {

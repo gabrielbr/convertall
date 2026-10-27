@@ -85,6 +85,13 @@ Esc clears what you typed, and a second Esc closes the chip. Clicking anywhere e
   - Animated GIF, WebP, APNG and HEICS files stay animated as GIF or APNG (frame delays are kept), and as WebP or AVIF through the media engine.
   - An animated WebP or PNG can also become a video, like a GIF.
 
+### Smart actions (on-device)
+
+Both run on your Mac with Apple's Vision framework. Nothing is uploaded and nothing extra is downloaded.
+
+- **Text (OCR).** Images get a **Text** pill that recognises the text in photos, screenshots and scans and saves it as `.txt`, with the language detected automatically. PDFs without a text layer (scans) fall back to OCR on their own when you convert them to TXT, DOCX, RTF and the other text formats.
+- **Cutout.** Still images get a **Cutout** pill that keeps the main subject on a transparent background. The result is saved as `name (no background).png`, or in the same format if that format supports transparency (WebP, HEIC, TIFF). It needs macOS 14 or later.
+
 ### Design decisions
 
 - **The chip sits where your attention already is.** It opens next to the pointer you just used for the right-click, so your eyes don't have to move.
@@ -160,6 +167,7 @@ Sources/
       DocumentEngine.swift   DOCX/DOC/ODT/RTF/TXT/HTML/PDF natively; PDF pages → images
       OfficeEngine.swift     LibreOffice (headless) for spreadsheets and presentations
       Combiner.swift         many files → one PDF / MP4 / MP3 / M4A
+      VisionEngine.swift     OCR (images, scanned PDFs) and background removal
       UpdateInstaller.swift  GitHub Releases check, verified download, in-place swap
       ConversionTask.swift   progress + cancellation, process runner, downloader
   ConvertAll/                the macOS app (AppKit + SwiftUI)
@@ -182,6 +190,6 @@ scripts/build-app.sh         SwiftPM → ConvertAll.app bundle
 
 - Animated sources keep their animation only when the target can hold it (GIF, APNG, WebP, AVIF, video). Other targets get the first frame.
 - Video to a still image keeps one representative frame.
-- PDF to DOCX, ODT, RTF and the other text formats keeps the text and basic styling, but not the exact layout.
+- PDF to DOCX, ODT, RTF and the other text formats keeps the text and basic styling, but not the exact layout. Scanned PDFs are read with OCR, which gives plain text only.
 - There's no settings UI yet. Output always goes next to the original.
 - Top-level placement in Finder's context menu would need a Finder Sync extension. "Open With" and Quick Actions don't need one.

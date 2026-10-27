@@ -8,14 +8,18 @@ public enum ConversionError: LocalizedError {
     case writeFailed(String)
     case noText
     case alreadyOptimized
+    case noTextFound
+    case noSubject
 
     public var errorDescription: String? {
         switch self {
         case .unreadable(let name): "Couldn't read “\(name)”."
         case .engineMissing(let format): "\(format.displayName) conversion needs an extra component."
         case .writeFailed(let detail): "Conversion failed: \(detail)"
-        case .noText: "This PDF has no selectable text (it may be a scan)."
+        case .noText: "No text found in this PDF, even with text recognition."
         case .alreadyOptimized: "Already as small as it gets — no smaller version was saved."
+        case .noTextFound: "No text was found."
+        case .noSubject: "Couldn't find a clear subject to cut out."
         }
     }
 }

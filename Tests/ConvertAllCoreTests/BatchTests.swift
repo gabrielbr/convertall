@@ -95,4 +95,13 @@ final class BatchTests: XCTestCase {
         XCTAssertEqual(OutputNaming.combined(for: first, format: .pdf, fileExists: { $0.path == "/pics/beach (combined).pdf" }).path,
                        "/pics/beach (combined) 2.pdf")
     }
+
+    func testSuffixNaming() {
+        let src = URL(fileURLWithPath: "/pics/cat.jpg")
+        XCTAssertEqual(OutputNaming.destination(for: src, format: .png, suffix: "no background", fileExists: { _ in false }).path,
+                       "/pics/cat (no background).png")
+        XCTAssertEqual(OutputNaming.destination(for: src, format: .png, suffix: "no background",
+                                                fileExists: { $0.lastPathComponent == "cat (no background).png" }).lastPathComponent,
+                       "cat (no background) 2.png")
+    }
 }

@@ -5,14 +5,16 @@ public enum OutputNaming {
     /// extension. Never overwrites — appends " 2", " 3"… like Finder does.
     ///
     /// `photo.jpg` → `photo.png`; if that exists → `photo 2.png`.
+    /// `suffix` names derived outputs: `photo.jpg` → `photo (no background).png`.
     public static func destination(
         for source: URL,
         format: FileFormat,
         in directory: URL? = nil,
+        suffix: String? = nil,
         fileExists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }
     ) -> URL {
         let dir = directory ?? source.deletingLastPathComponent()
-        let base = source.deletingPathExtension().lastPathComponent
+        let base = source.deletingPathExtension().lastPathComponent + (suffix.map { " (\($0))" } ?? "")
         let ext = format.preferredExtension
 
         var candidate = dir.appendingPathComponent(base).appendingPathExtension(ext)

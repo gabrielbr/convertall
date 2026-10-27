@@ -66,8 +66,11 @@ enum DocumentEngine {
                 if result.length > 0 { result.append(NSAttributedString(string: "\n\n")) }
                 result.append(page)
             }
-            guard result.string.contains(where: { !$0.isWhitespace }) else { throw ConversionError.noText }
-            return result
+            if result.string.contains(where: { !$0.isWhitespace }) { return result }
+            // A scan: no text layer, so read the pages with on-device OCR.
+            let recognized = try VisionEngine.recognizeText(in: pdf)
+            guard recognized.contains(where: { !$0.isWhitespace }) else { throw ConversionError.noText }
+            return NSAttributedString(string: recognized, attributes: bodyAttributes)
 
         case .txt:
             var encoding = String.Encoding.utf8
@@ -187,7 +190,7 @@ enum PDFRasterizer {
         for (i, destination) in destinations.enumerated() {
             try task.checkCancelled()
             guard let page = pdf.page(at: i) else { continue }
-            let image = try render(page)
+            let image = try render(page, scale: scale)
             try ImageConverter.export(image, as: format, to: destination, options: options)
             let span = progressRange.upperBound - progressRange.lowerBound
             task.report(progressRange.lowerBound + span * Double(i + 1) / Double(count))
@@ -196,7 +199,7 @@ enum PDFRasterizer {
         return count == 1 ? destinations : [destinations[0].deletingLastPathComponent()]
     }
 
-    private static func render(_ page: PDFPage) throws -> CGImage {
+    static func render(_ page: PDFPage, scale: CGFloat) throws -> CGImage {
         let bounds = page.bounds(for: .cropBox)
         let rotated = page.rotation % 180 != 0
         let size = CGSize(width: rotated ? bounds.height : bounds.width, height: rotated ? bounds.width : bounds.height)

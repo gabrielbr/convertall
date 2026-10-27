@@ -242,7 +242,7 @@ struct ChipView: View {
             if outputs.isEmpty {
                 ResultMessage(
                     symbol: "exclamationmark.triangle.fill", tint: .orange,
-                    title: { if case .compress = action { return "Couldn't make it smaller" }; return "Couldn't convert to \(action.format.displayName)" }(),
+                    title: failureTitle(action),
                     detail: failures.first ?? "Something went wrong."
                 ) {
                     Button("Try Another Format") { model.backToPicking() }
@@ -268,6 +268,16 @@ struct ChipView: View {
             ResultMessage(symbol: "questionmark.folder.fill", tint: .secondary, title: "Nothing to convert", detail: message) {
                 Button("OK") { model.onClose() }.keyboardShortcut(.defaultAction)
             }
+        }
+    }
+
+    private func failureTitle(_ action: ChipAction) -> String {
+        switch action {
+        case .compress: "Couldn't make it smaller"
+        case .extractText: "Couldn't read any text"
+        case .removeBackground: "Couldn't cut out the subject"
+        case .combine: "Couldn't combine these files"
+        case .convert(let f): "Couldn't convert to \(f.displayName)"
         }
     }
 

@@ -11,7 +11,9 @@ final class BatchTests: XCTestCase {
             try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Data([1]).write(to: url)
         }
-        let found = FolderScanner.expand([root]).map { $0.path.replacingOccurrences(of: root.path + "/", with: "") }
+        // macOS's temp dir lives behind a symlink (/var → /private/var); compare resolved paths.
+        let base = root.resolvingSymlinksInPath().path + "/"
+        let found = FolderScanner.expand([root]).map { $0.resolvingSymlinksInPath().path.replacingOccurrences(of: base, with: "") }
         XCTAssertEqual(found, ["a.jpg", "b.txt", "sub/c.mp4", "sub/deeper/d.PNG"])
         XCTAssertTrue(FolderScanner.containsFolder([root]))
         XCTAssertFalse(FolderScanner.containsFolder([root.appendingPathComponent("a.jpg")]))

@@ -322,7 +322,7 @@ final class ChipModel: ObservableObject {
         let target = action.format
         let multiple = jobs.count > 1
 
-        func job(_ k: Int) -> @Sendable () async -> (Int, Result<[URL], Error>) {
+        @Sendable func job(_ k: Int) -> @Sendable () async -> (Int, Result<[URL], Error>) {
             let file = files[jobs[k]], source = sources[jobs[k]], task = tasks[k]
             return {
                 (k, await ChipModel.inBackground {

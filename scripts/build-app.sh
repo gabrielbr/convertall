@@ -24,7 +24,7 @@ if command -v xcodegen >/dev/null 2>&1 && xcodebuild -version >/dev/null 2>&1; t
   rm -rf build/DerivedData/Build/Products
   # The build number goes in at build time, so Xcode's signatures stay intact
   # (editing Info.plist afterwards would invalidate them).
-  xcodebuild -project ConvertAll.xcodeproj -scheme ConvertAll -configuration Release \
+  xcodebuild -project ConvertAll.xcodeproj -scheme ConvertAllApp -configuration Release \
     -destination 'generic/platform=macOS' \
     -derivedDataPath build/DerivedData \
     ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \

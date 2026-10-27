@@ -23,8 +23,14 @@ settings:
 packages:
   ConvertAllKit:
     path: .
+schemes:
+  # Not "ConvertAll": the Swift package already has an executable scheme by that name.
+  ConvertAllApp:
+    build:
+      targets:
+        ConvertAllApp: all
 targets:
-  ConvertAll:
+  ConvertAllApp:
     type: application
     platform: macOS
     sources:
@@ -34,6 +40,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: ConvertAll
+        PRODUCT_MODULE_NAME: ConvertAllApp
         PRODUCT_BUNDLE_IDENTIFIER: app.convertall.ConvertAll
         INFOPLIST_FILE: Support/Info.plist
         GENERATE_INFOPLIST_FILE: NO

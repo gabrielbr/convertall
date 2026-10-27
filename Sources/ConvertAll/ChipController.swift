@@ -42,10 +42,12 @@ final class ChipController {
     var onDidClose: () -> Void = {}
     var isVisible: Bool { panel?.isVisible ?? false }
 
-    func present(_ urls: [URL], at point: NSPoint = NSEvent.mouseLocation) {
+    /// - Parameter clipboard: the result is copied to the clipboard (⌥⌘V flow).
+    func present(_ urls: [URL], at point: NSPoint = NSEvent.mouseLocation, clipboard: Bool = false) {
         close(animated: false)
 
         let model = ChipModel(files: urls)
+        model.clipboardMode = clipboard
         let hosting = NSHostingView(rootView: ChipView(model: model))
         let size = hosting.fittingSize
         let (frame, anchor) = placement(for: size, near: point)

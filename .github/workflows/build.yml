@@ -40,10 +40,18 @@ jobs:
         run: sudo xcode-select -s /Applications/Xcode_15.4.app
       - name: Test
         run: swift test
+      - name: Install XcodeGen
+        run: brew install xcodegen
       - name: Build app
         env:
           BUILD_NUMBER: ${{ github.run_number }}
         run: scripts/build-app.sh
+      - name: Check bundle contents
+        run: |
+          test -x build/ConvertAll.app/Contents/MacOS/convertall
+          build/ConvertAll.app/Contents/MacOS/convertall --formats | head -3
+          ls build/ConvertAll.app/Contents/Resources/Metadata.appintents
+          find build/ConvertAll.app -name "*.appex" -maxdepth 3 || true
       - name: Package
         run: cd build && ditto -c -k --keepParent ConvertAll.app "ConvertAll-${{ needs.version.outputs.version }}.zip"
       - uses: actions/upload-artifact@v4

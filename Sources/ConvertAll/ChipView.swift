@@ -285,7 +285,10 @@ struct ChipView: View {
         var parts: [String] = []
         if !failures.isEmpty { parts.append("\(failures.count) couldn't be converted") }
         if skipped > 0 { parts.append("\(skipped) skipped (not convertible to this)") }
-        if parts.isEmpty {
+        if parts.isEmpty, model.clipboardMode {
+            parts.append("Copied to the clipboard")
+            parts.append(model.savingsText ?? "paste anywhere")
+        } else if parts.isEmpty {
             parts.append("Saved next to the original")
             parts.append(model.savingsText ?? "drag me anywhere")
         }

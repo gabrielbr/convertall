@@ -19,7 +19,7 @@ options:
   --size <s>             50% | <pixels> (longest side) | <n>KB | <n>MB (target file size)
   --no-metadata          strip location, camera and author details
   --trim <start-end>     keep part of a video/audio clip, e.g. 0:10-1:05 or 10-65
-  --install-engine       download the media engine (FFmpeg) if missing, then continue
+  --install-engine       download what's missing (media engine or document pack), then continue
   --formats              list every format and what it converts to
   --version
 
@@ -101,7 +101,27 @@ let files = FolderScanner.expand(paths.map { URL(fileURLWithPath: ($0 as NSStrin
 guard !files.isEmpty else { fail("no convertible files given") }
 let sources = files.map { Converter.sourceFormat(of: $0) ?? FileFormat(url: $0)! }
 
-if installEngine, MediaEngine.ffmpegURL == nil {
+let wantedFormat: FileFormat? = {
+    switch action {
+    case .convert(let f), .combine(let f): return f
+    case .smaller: return sources.first
+    default: return nil
+    }
+}()
+let needsOffice = wantedFormat.map { f in zip(files, sources).contains { Converter.requirement(from: $1, to: f) == .libreOffice } } ?? false
+if installEngine, needsOffice {
+    FileHandle.standardError.write(Data("Downloading the document pack (\(OfficePack.downloadSizeText))…\n".utf8))
+    final class Outcome: @unchecked Sendable { var error: Error? }
+    let outcome = Outcome()
+    let done = DispatchSemaphore(value: 0)
+    Task.detached {
+        do { try await OfficePack.install { _ in } } catch { outcome.error = error }
+        done.signal()
+    }
+    done.wait()
+    if let error = outcome.error { fail("couldn't install the document pack: \(error.localizedDescription)") }
+}
+if installEngine, MediaEngine.ffmpegURL == nil, !needsOffice {
     FileHandle.standardError.write(Data("Downloading the media engine (\(MediaPack.downloadSizeText))…\n".utf8))
     final class Outcome: @unchecked Sendable { var error: Error? }
     let outcome = Outcome()
@@ -122,7 +142,7 @@ func run(_ name: String, _ body: () throws -> [URL]) {
         failures += 1
         var message = error.localizedDescription
         if case ConversionError.engineMissing = error {
-            message += MediaEngine.ffmpegURL == nil ? " Re-run with --install-engine." : " Install LibreOffice from libreoffice.org."
+            message += " Re-run with --install-engine."
         }
         FileHandle.standardError.write(Data("convertall: \(name): \(message)\n".utf8))
     }

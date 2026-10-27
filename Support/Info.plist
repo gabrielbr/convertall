@@ -19,7 +19,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.6.0</string>
+	<string>0.7.0</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationCategoryType</key>
@@ -33,6 +33,19 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 ConvertAll</string>
+
+	<!-- convertall://run?action=convert-png&path=… — used by the Finder menu extension. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.convertall.ConvertAll</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>convertall</string>
+			</array>
+		</dict>
+	</array>
 
 	<!-- Right-click › Open With › ConvertAll for every supported file type, and for folders. -->
 	<key>CFBundleDocumentTypes</key>

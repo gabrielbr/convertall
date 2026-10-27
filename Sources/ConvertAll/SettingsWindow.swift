@@ -1,6 +1,7 @@
 #if os(macOS)
 import AppKit
 import ConvertAllCore
+import FinderSync
 import SwiftUI
 
 final class SettingsWindow: NSObject, NSWindowDelegate {
@@ -45,6 +46,23 @@ private struct SettingsView: View {
                 Text(settings.staysRunning
                      ? "ConvertAll keeps running quietly in the background for these features."
                      : "With everything off, ConvertAll quits itself shortly after each conversion.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                HStack {
+                    Text("ConvertAll menu in Finder's right-click menu")
+                    Spacer()
+                    if FIFinderSyncController.isExtensionEnabled {
+                        Label("On", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                    } else {
+                        Button("Turn On…") { FIFinderSyncController.showExtensionManagementInterface() }
+                    }
+                }
+            } header: {
+                Text("Finder")
+            } footer: {
+                Text("Adds one-click presets (Make Smaller, → PNG, → MP4, Combine into One PDF…) right in the menu. Turn on “ConvertAll Finder Menu” under Finder extensions.")
                     .foregroundStyle(.secondary)
             }
 

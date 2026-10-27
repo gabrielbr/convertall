@@ -62,7 +62,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSObject.cancelPreviousPerformRequests(withTarget: self, selector: #selector(showWelcomeIfLaunchedDirectly), object: nil)
         // Files beat the welcome window: if it just popped up on its own, take it away again.
         WelcomeWindow.shared.closeIfJustShownAutomatically()
-        open(urls)
+        for url in urls where url.scheme == "convertall" { handle(url) }
+        let files = urls.filter(\.isFileURL)
+        if !files.isEmpty { open(files) }
+    }
+
+    /// `convertall://run?action=convert-png&path=/a.jpg&path=/b.jpg` from the Finder menu.
+    private func handle(_ url: URL) {
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let paths = items.filter { $0.name == "path" }.compactMap(\.value).map { URL(fileURLWithPath: $0) }
+        guard !paths.isEmpty else { return }
+        let action = items.first { $0.name == "action" }?.value
+        NSObject.cancelPreviousPerformRequests(withTarget: self, selector: #selector(quitIfIdle), object: nil)
+        ChipController.shared.present(paths, run: action == "open" ? nil : action)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

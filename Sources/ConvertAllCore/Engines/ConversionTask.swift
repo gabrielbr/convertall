@@ -50,13 +50,20 @@ enum ProcessRunner {
     }
 
     static func run(
-        _ executable: URL, _ arguments: [String], task: ConversionTask? = nil,
+        _ executable: URL, _ arguments: [String], task: ConversionTask? = nil, input: Data? = nil,
         onLine: (@Sendable (String) -> Void)? = nil
     ) throws -> Result {
         let process = Process()
         process.executableURL = executable
         process.arguments = arguments
-        process.standardInput = FileHandle.nullDevice
+        if let input {
+            let stdin = Pipe()
+            process.standardInput = stdin
+            stdin.fileHandleForWriting.write(input)
+            try? stdin.fileHandleForWriting.close()
+        } else {
+            process.standardInput = FileHandle.nullDevice
+        }
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = pipe

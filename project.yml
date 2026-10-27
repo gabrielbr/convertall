@@ -1,5 +1,6 @@
 # Xcode project for release builds (generated with XcodeGen; not checked in).
-# Xcode adds what SwiftPM can't: App Intents metadata for Shortcuts and app extensions.
+# Xcode adds what SwiftPM can't: App Intents metadata for Shortcuts and the Finder menu
+# extension (FinderMenu.appex).
 #   brew install xcodegen && xcodegen generate
 name: ConvertAll
 options:
@@ -55,6 +56,22 @@ targets:
         copy:
           destination: wrapper
           subpath: Contents/Helpers
+      - target: FinderMenu
+        embed: true
+  FinderMenu:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Extensions/FinderSync
+        excludes: ["Info.plist", "*.entitlements"]
+    settings:
+      base:
+        PRODUCT_NAME: FinderMenu
+        PRODUCT_BUNDLE_IDENTIFIER: app.convertall.ConvertAll.FinderMenu
+        INFOPLIST_FILE: Extensions/FinderSync/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Extensions/FinderSync/FinderSync.entitlements
+        SKIP_INSTALL: YES
   convertall:
     type: tool
     platform: macOS

@@ -192,6 +192,14 @@ final class ChipModel: ObservableObject {
     func isMatch(_ action: ChipAction) -> Bool { query.isEmpty || action.score(query) > 0 }
 
     func label(_ action: ChipAction) -> String { action.label(fileCount: files.count) }
+
+    /// Resolves a preset from the Finder menu ("convert-png", "compress-same", …).
+    func action(withID id: String) -> ChipAction? {
+        if id == "compress-same" {
+            return actions.first { if case .compress = $0 { return true }; return false }
+        }
+        return actions.first { $0.id == id }
+    }
     func blurb(_ action: ChipAction) -> String { action.blurb(fileCount: files.count) }
 
     private func applies(_ action: ChipAction, to i: Int) -> Bool {
@@ -262,25 +270,24 @@ final class ChipModel: ObservableObject {
         }
     }
 
+    /// Downloads whatever the action is missing (media engine or document pack), then runs it.
     func installEngineAndRun() {
-        guard case .needs(let action, .mediaEngine) = phase else { return }
+        guard case .needs(let action, let need) = phase, need != .ready else { return }
         phase = .installingEngine(action, progress: 0)
         let box = WeakBox(self)
+        let report: @Sendable (Double) -> Void = { p in
+            DispatchQueue.main.async { box.value?.phase = .installingEngine(action, progress: p) }
+        }
         Task { @MainActor in
             do {
-                try await MediaPack.install { p in
-                    DispatchQueue.main.async { box.value?.phase = .installingEngine(action, progress: p) }
-                }
+                if need == .libreOffice { try await OfficePack.install(progress: report) } else { try await MediaPack.install(progress: report) }
                 phase = .picking
-                start(action, reveal: false)
+                run(action)
             } catch {
-                phase = .finished(action, outputs: [], failures: ["Couldn't download the media engine: \(error.localizedDescription)"], skipped: 0)
+                let what = need == .libreOffice ? "document pack" : "media engine"
+                phase = .finished(action, outputs: [], failures: ["Couldn't download the \(what): \(error.localizedDescription)"], skipped: 0)
             }
         }
-    }
-
-    func getLibreOffice() {
-        NSWorkspace.shared.open(OfficeEngine.downloadPage)
     }
 
     func beginTrim() {
@@ -523,9 +530,7 @@ final class ChipModel: ObservableObject {
         case 36, 76:  // return, enter
             switch phase {
             case .picking: runHighlighted(reveal: cmd)
-            case .needs(_, .mediaEngine): installEngineAndRun()
-            case .needs(let a, .libreOffice):
-                if OfficeEngine.sofficeURL == nil { getLibreOffice() } else { run(a) }
+            case .needs: installEngineAndRun()
             case .trimming: endTrim(keep: true)
             case .finished(_, let outputs, _, _):
                 if outputs.isEmpty { backToPicking() } else { revealOutputs() }

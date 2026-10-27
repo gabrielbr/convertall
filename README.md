@@ -16,7 +16,7 @@ It handles the full format list from [convt.app/formats](https://convt.app/forma
 Two extras are optional and are only needed for some conversions:
 
 - **Media engine.** This is [FFmpeg](https://ffmpeg.org), a static build from [martin-riedl.de](https://ffmpeg.martin-riedl.de) (about 28 MB). It's needed for video and audio conversion. ConvertAll uses it to save WebP and AVIF images too, because macOS can only read those two formats. The first time you pick a format that needs it, the chip offers a one-click **Download & Convert**. The download is pinned to a specific version, its SHA-256 checksum is verified, and it's stored in `~/Library/Application Support/ConvertAll`. If you've installed `ffmpeg` with Homebrew, ConvertAll uses that instead.
-- **LibreOffice.** This free app is needed for spreadsheets and presentations. If it isn't installed, the chip links to the download page. ConvertAll finds LibreOffice automatically once it's installed.
+- **Document pack.** This is LibreOffice (about 300 MB), needed for spreadsheets and presentations. It's a one-click download from the chip, pinned to a specific version and verified by SHA-256. If you already have LibreOffice installed, ConvertAll uses it instead.
 
 Pills that need an extra show a small ⬇︎ badge. Everything else works offline right away.
 
@@ -113,6 +113,23 @@ Open **Settings** with ⌘, from the welcome window or the menu bar icon. Everyt
 - **Watched folders.** Add a folder and choose **Make smaller** or a target format, plus a quality. New files dropped into it are converted into its `Converted/` subfolder, and you get a notification for each one.
 - **Rename to convert.** In the folders you choose (Desktop and Downloads by default), rename `photo.jpg` to `photo.png` in Finder and ConvertAll really converts it. A content sniffer that reads the file's bytes catches the mismatch between the name and what's inside. The untouched original goes to the Trash.
 
+### Finder menu and the document pack
+
+- **ConvertAll in Finder's right-click menu.** A Finder extension adds a **ConvertAll ▸** submenu with presets that fit the selection:
+  - Images: Make Smaller, → PNG, JPEG, HEIC or WebP, → PDF (or **Combine into One PDF**), Extract Text, Remove Background.
+  - Video: Make Smaller, → MP4, → GIF, → MP3, Join into One MP4.
+  - Audio: Make Smaller, → MP3, M4A or WAV.
+  - PDF: Make Smaller, → DOCX, → PNG pages, → Text.
+  - Office documents: → PDF, → PNG pages.
+
+  **Convert…** opens the chip. A preset starts converting right away, with the chip showing progress next to the pointer.
+  - To turn it on, go to **Settings › Finder › Turn On…** and enable "ConvertAll Finder Menu".
+  - How it works: the extension is sandboxed, so it only builds the menu. It passes your choice to the app through a `convertall://` link, and the app does the work.
+- **Document pack.** Spreadsheets and presentations no longer need a separate LibreOffice install.
+  - The chip offers **Download & Continue**. It fetches The Document Foundation's official LibreOffice 26.8.1 build (about 300 MB, once), checks the published SHA-256, and unpacks it into `~/Library/Application Support/ConvertAll`.
+  - If you've already installed LibreOffice yourself, ConvertAll uses that instead.
+  - On the command line, `convertall --install-engine` downloads whichever engine is missing.
+
 ### Design decisions
 
 - **The chip sits where your attention already is.** It opens next to the pointer you just used for the right-click, so your eyes don't have to move.
@@ -191,6 +208,7 @@ Sources/
       MediaEngine.swift      FFmpeg runner with progress; MediaPack = pinned, verified download
       DocumentEngine.swift   DOCX/DOC/ODT/RTF/TXT/HTML/PDF natively; PDF pages → images
       OfficeEngine.swift     LibreOffice (headless) for spreadsheets and presentations
+      OfficePack.swift       one-click LibreOffice download (pinned, SHA-256 verified)
       Combiner.swift         many files → one PDF / MP4 / MP3 / M4A
       VisionEngine.swift     OCR (images, scanned PDFs) and background removal
       UpdateInstaller.swift  GitHub Releases check, verified download, in-place swap
@@ -210,6 +228,7 @@ Sources/
     HotKey.swift             system-wide ⌥⌘V
     FolderWatcher.swift      FSEvents wrapper
   ConvertAllCLI/             the `convertall` command-line tool
+Extensions/FinderSync/       Finder right-click menu extension (FinderMenu.appex)
     ChipView.swift           the chip UI
     WelcomeWindow.swift      first-launch guide, drop zone, extras and update status
 Support/
@@ -225,4 +244,4 @@ scripts/build-app.sh         Xcode (via XcodeGen) or SwiftPM → ConvertAll.app 
 - Video to a still image keeps one representative frame.
 - PDF to DOCX, ODT, RTF and the other text formats keeps the text and basic styling, but not the exact layout. Scanned PDFs are read with OCR, which gives plain text only.
 - There's no settings UI yet. Output always goes next to the original.
-- Top-level placement in Finder's context menu would need a Finder Sync extension. "Open With" and Quick Actions don't need one.
+- The Finder menu's presets are fixed; customising them is planned.

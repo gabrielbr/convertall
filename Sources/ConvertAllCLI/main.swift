@@ -162,8 +162,12 @@ default:
         run(file.lastPathComponent) {
             switch action {
             case .convert(let target):
-                guard ConversionMatrix.targets(for: source).contains(target) || Converter.isAnimated(file, format: source) else {
-                    throw ConversionError.writeFailed("\(source.displayName) can't become \(target.displayName)")
+                // Same format is fine when an option changes something (resize, strip metadata, quality).
+                let reSave = target == source && (options.size != .original || options.stripMetadata || options.quality != .balanced)
+                guard reSave || ConversionMatrix.targets(for: source).contains(target) || Converter.isAnimated(file, format: source) else {
+                    throw ConversionError.writeFailed(target == source
+                        ? "it's already \(target.displayName) — use --smaller, --size or --no-metadata"
+                        : "\(source.displayName) can't become \(target.displayName)")
                 }
                 return try Converter.convert(file, from: source, to: target, options: options, trim: trim)
             case .smaller:

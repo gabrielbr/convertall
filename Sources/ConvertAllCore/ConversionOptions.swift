@@ -117,6 +117,15 @@ public struct ConversionOptions: Codable, Equatable, Sendable {
         }
     }
 
+    /// libx265, the software fallback for "Make smaller" when the hardware encoder doesn't shrink the file.
+    public var x265CRF: Int {
+        switch quality {
+        case .smaller: 30
+        case .balanced: 28
+        case .best: 24
+        }
+    }
+
     /// VideoToolbox constant quality (1–100, higher is better).
     public func videoToolboxQuality(compress: Bool = false) -> Int {
         switch quality {

@@ -207,6 +207,10 @@ final class FFmpegTests: XCTestCase {
         XCTAssertFalse(squeeze.attempts.contains { $0.contains("copy") })
         XCTAssertTrue(squeeze.attempts[0].contains("hevc_videotoolbox"))
         XCTAssertTrue(squeeze.attempts[0].contains("hvc1"))
+        XCTAssertEqual(squeeze.attempts.count, 3, "hardware HEVC, then x265, then x264")
+        XCTAssertTrue(squeeze.attempts[1].contains("libx265"))
+        XCTAssertFalse(FFmpeg.plan(from: .mov, to: .mp4, probe: probe).attempts.contains { $0.contains("libx265") },
+                       "plain conversions stay on H.264 for compatibility")
 
         // Resizing also rules out copying, and shows up in the filter.
         let half = FFmpeg.plan(from: .mov, to: .mp4, probe: probe, options: ConversionOptions(size: .half))

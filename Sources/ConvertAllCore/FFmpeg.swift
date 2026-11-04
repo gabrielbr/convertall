@@ -114,8 +114,16 @@ public enum FFmpeg {
             } else if target != .mkv, canCopyIntoApple {
                 attempts.append(["-c", "copy"] + tail)
             }
-            // Compressing → HEVC: roughly half the size of H.264 at the same quality.
+            // Compressing → HEVC: roughly half the size of H.264 at the same quality. The hardware
+            // encoder is fast but can come out bigger than an already-efficient source, so
+            // "Make smaller" keeps going: software HEVC (x265), then x264, until a result is smaller.
             attempts.append(videoToolbox(hevc: compress) + aac + tail)
+            if compress {
+                var x265 = ["-c:v", "libx265", "-preset", "medium"]
+                x265 += bitrate ?? ["-crf", "\(options.x265CRF)"]
+                x265 += ["-pix_fmt", "yuv420p", "-tag:v", "hvc1", "-x265-params", "log-level=error"] + scale
+                attempts.append(x265 + aac + tail)
+            }
             attempts.append(x264 + aac + tail)
             return MediaPlan(attempts: attempts)
 

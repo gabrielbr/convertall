@@ -29,8 +29,10 @@ public enum MediaEngine {
         defer { work.remove() }
         let out = work.file("out.\(produced.preferredExtension)")
         let attempts = plan.attempts.map { FFmpeg.baseArguments + plan.inputArguments + ["-i", url.path] + $0 + [out.path] }
+        // "Make smaller" only counts a result that really is smaller; otherwise try the next encoder.
+        let inputSize = ImageConverter.fileSize(url)
         try run(ffmpeg, attempts: attempts, duration: plan.outputDuration ?? 0, share: plan.intermediate == nil ? 1 : 0.9,
-                task: task, output: out)
+                task: task, output: out, accept: source == target ? { ImageConverter.fileSize($0) < inputSize } : { _ in true })
 
         let destination = OutputNaming.destination(for: url, format: target)
         if plan.intermediate != nil {
@@ -43,22 +45,28 @@ public enum MediaEngine {
     }
 
     /// Tries each full argument list until one produces a non-empty `output`, reporting progress.
+    /// Tries each argument list until one produces an `output` that `accept`s.
     static func run(
         _ ffmpeg: URL, attempts: [[String]], duration: Double, share: Double = 1,
-        task: ConversionTask, output: URL
+        task: ConversionTask, output: URL, accept: (URL) -> Bool = { _ in true }
     ) throws {
         var lastError = "FFmpeg couldn't convert this file"
+        var producedButRejected = false
         for args in attempts {
             try task.checkCancelled()
             let fullArgs = args.first == "-hide_banner" ? args : FFmpeg.baseArguments + args
             let result = try ProcessRunner.run(ffmpeg, fullArgs, task: task) { line in
                 if duration > 0, let t = FFmpeg.parseProgressTime(line) { task.report(t / duration * share) }
             }
-            if result.status == 0, ImageConverter.fileSize(output) > 0 { return }
-            lastError = FFmpeg.errorSummary(result.output)
+            if result.status == 0, ImageConverter.fileSize(output) > 0 {
+                if accept(output) { return }
+                producedButRejected = true
+            } else {
+                lastError = FFmpeg.errorSummary(result.output)
+            }
             try? FileManager.default.removeItem(at: output)
         }
-        throw ConversionError.writeFailed(lastError)
+        throw producedButRejected ? ConversionError.alreadyOptimized : ConversionError.writeFailed(lastError)
     }
 
     /// Used by the image engine: WebP/AVIF encoding and PNG quantisation.

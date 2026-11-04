@@ -381,9 +381,26 @@ private struct OptionsStrip: View {
 
             Toggle(isOn: $model.options.stripMetadata) {
                 Label("No metadata", systemImage: model.options.stripMetadata ? "eye.slash.fill" : "eye.slash")
+                    .labelStyle(.iconOnly)
             }
             .toggleStyle(.button)
-            .help("Remove location, camera and author details from the result")
+            .help(model.options.stripMetadata ? "Metadata will be removed (location, camera, author)" : "Remove location, camera and author details from the result")
+
+            Menu {
+                Button { model.options.saveTo = nil } label: { check(model.options.saveTo == nil, "Next to the Original") }
+                Divider()
+                ForEach(SaveSpot.common, id: \.path) { spot in
+                    Button { model.options.saveTo = spot.path } label: { check(model.options.saveTo == spot.path, spot.name) }
+                }
+                if let custom = model.options.saveTo, !SaveSpot.common.map(\.path).contains(custom) {
+                    Button {} label: { check(true, (custom as NSString).lastPathComponent) }
+                }
+                Divider()
+                Button("Choose Folder…") { model.chooseSaveFolder() }
+            } label: {
+                Label(model.options.saveTo.map { ($0 as NSString).lastPathComponent } ?? "Beside", systemImage: "folder")
+            }
+            .help("Where converted files are saved")
 
             if model.canTrim {
                 Button { model.beginTrim() } label: {
@@ -411,12 +428,26 @@ private struct OptionsStrip: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
+    @ViewBuilder private func check(_ on: Bool, _ title: String) -> some View {
+        if on { Label(title, systemImage: "checkmark") } else { Text(title) }
+    }
+
     @ViewBuilder private func sizeItems(_ sizes: [ConversionOptions.Size]) -> some View {
         ForEach(sizes, id: \.self) { size in
             Button { model.options.size = size } label: {
                 if model.options.size == size { Label(size.title, systemImage: "checkmark") } else { Text(size.title) }
             }
         }
+    }
+}
+
+/// Common "Save to" folders.
+private enum SaveSpot {
+    struct Spot { let name: String; let path: String }
+    static var common: [Spot] {
+        [(FileManager.SearchPathDirectory.desktopDirectory, "Desktop"), (.downloadsDirectory, "Downloads"),
+         (.documentDirectory, "Documents"), (.picturesDirectory, "Pictures")]
+            .compactMap { dir, name in FileManager.default.urls(for: dir, in: .userDomainMask).first.map { Spot(name: name, path: $0.path) } }
     }
 }
 

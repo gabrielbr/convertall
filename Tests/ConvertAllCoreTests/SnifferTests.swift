@@ -14,6 +14,8 @@ final class SnifferTests: XCTestCase {
         XCTAssertEqual(FileSniffer.detect(ftyp("avif")), .avif)
         XCTAssertEqual(FileSniffer.detect(bytes("II*\0")), .tiff)
         XCTAssertEqual(FileSniffer.detect(bytes("qoif")), .qoi)
+        XCTAssertEqual(FileSniffer.detect(bytes("8BPS\u{1}")), .psd)
+        XCTAssertEqual(FileSniffer.detect(ftyp("crx ")), .raw, "Canon CR3 is ISO-media but not a video")
         XCTAssertEqual(FileSniffer.detect(bytes("P6\n4 4\n255\n")), .pnm)
         XCTAssertEqual(FileSniffer.detect(bytes("\u{FEFF}  <?xml version=\"1.0\"?><svg xmlns=…")), .svg)
         XCTAssertEqual(FileSniffer.detect(QOI.encode(try! RGBAImage(width: 1, height: 1, pixels: [1, 2, 3, 255]))), .qoi)
@@ -43,6 +45,7 @@ final class SnifferTests: XCTestCase {
         XCTAssertEqual(FileSniffer.detect(bytes("<!DOCTYPE html><html>")), .html)
         let zip: [UInt8] = [0x50, 0x4B, 0x03, 0x04]
         XCTAssertEqual(FileSniffer.detect(zip + bytes("....mimetypeapplication/vnd.oasis.opendocument.text")), .odt)
+        XCTAssertEqual(FileSniffer.detect(zip + bytes("....mimetypeapplication/epub+zip")), .epub)
         XCTAssertEqual(FileSniffer.detect(zip + bytes("....[Content_Types].xml....word/document.xml")), .docx)
         XCTAssertEqual(FileSniffer.detect(zip + bytes("....[Content_Types].xml....xl/workbook.xml")), .xlsx)
         XCTAssertEqual(FileSniffer.detect(zip + bytes("....nothing useful"), extensionHint: "pptx"), .pptx)

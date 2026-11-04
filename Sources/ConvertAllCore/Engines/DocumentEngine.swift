@@ -72,6 +72,19 @@ enum DocumentEngine {
             guard recognized.contains(where: { !$0.isWhitespace }) else { throw ConversionError.noText }
             return NSAttributedString(string: recognized, attributes: bodyAttributes)
 
+        case .md:
+            // Markdown → HTML → the Cocoa HTML importer, so structure and styling survive.
+            let text = try String(contentsOf: url, encoding: .utf8)
+            let work = try WorkDirectory()
+            defer { work.remove() }
+            let html = work.file("doc.html")
+            try Markdown.html(from: text, title: url.deletingPathExtension().lastPathComponent)
+                .write(to: html, atomically: true, encoding: .utf8)
+            return try read(html, as: .html)
+
+        case .epub:
+            return try readEPUB(url)
+
         case .txt:
             var encoding = String.Encoding.utf8
             let string = try (try? String(contentsOf: url, usedEncoding: &encoding))
@@ -89,6 +102,45 @@ enum DocumentEngine {
                 throw ConversionError.unreadable(url.lastPathComponent)
             }
         }
+    }
+
+    /// EPUB: unzip, follow container.xml → the package (OPF) → its spine, and import the
+    /// chapters in reading order as one HTML document (images resolve relative to it).
+    static func readEPUB(_ url: URL) throws -> NSAttributedString {
+        let work = try WorkDirectory()
+        defer { work.remove() }
+        let unzip = try ProcessRunner.run(URL(fileURLWithPath: "/usr/bin/ditto"), ["-x", "-k", url.path, work.url.path])
+        guard unzip.status == 0,
+              let container = try? XMLDocument(contentsOf: work.file("META-INF/container.xml")),
+              let opfPath = try container.nodes(forXPath: "//*[local-name()='rootfile']/@full-path").first?.stringValue,
+              let opf = try? XMLDocument(contentsOf: work.file(opfPath))
+        else { throw ConversionError.unreadable(url.lastPathComponent) }
+
+        let base = work.file(opfPath).deletingLastPathComponent()
+        var manifest: [String: String] = [:]
+        for item in try opf.nodes(forXPath: "//*[local-name()='manifest']/*[local-name()='item']") {
+            guard let el = item as? XMLElement, let id = el.attribute(forName: "id")?.stringValue,
+                  let href = el.attribute(forName: "href")?.stringValue else { continue }
+            manifest[id] = href.removingPercentEncoding ?? href
+        }
+        let chapters = try opf.nodes(forXPath: "//*[local-name()='spine']/*[local-name()='itemref']/@idref")
+            .compactMap { $0.stringValue.flatMap { manifest[$0] } }
+        guard !chapters.isEmpty else { throw ConversionError.unreadable(url.lastPathComponent) }
+
+        // Join the chapters' bodies, with page breaks between them.
+        var body = ""
+        for chapter in chapters {
+            guard let xhtml = try? String(contentsOf: base.appendingPathComponent(chapter), encoding: .utf8) else { continue }
+            let inner = xhtml.range(of: "<body[^>]*>", options: [.regularExpression, .caseInsensitive])
+                .flatMap { start in xhtml.range(of: "</body>", options: .caseInsensitive, range: start.upperBound..<xhtml.endIndex)
+                    .map { String(xhtml[start.upperBound..<$0.lowerBound]) } } ?? xhtml
+            if !body.isEmpty { body += "<div style=\"page-break-before: always\"></div>" }
+            body += inner
+        }
+        let combined = base.appendingPathComponent("convertall-book.html")
+        try "<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body>\(body)</body></html>"
+            .write(to: combined, atomically: true, encoding: .utf8)
+        return try read(combined, as: .html)
     }
 
     // MARK: Writing

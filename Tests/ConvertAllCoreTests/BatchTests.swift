@@ -105,3 +105,30 @@ final class BatchTests: XCTestCase {
                        "cat (no background) 2.png")
     }
 }
+
+final class RelocateTests: XCTestCase {
+    func testRelocateNeverOverwrites() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("reloc-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: root) }
+        let src = root.appendingPathComponent("src"), dst = root.appendingPathComponent("out")
+        try fm.createDirectory(at: src.appendingPathComponent("report (PNG)"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: dst, withIntermediateDirectories: true)
+        try Data([1]).write(to: src.appendingPathComponent("a.png"))
+        try Data([2]).write(to: dst.appendingPathComponent("a.png"))
+
+        let moved = try OutputNaming.relocate([src.appendingPathComponent("a.png"), src.appendingPathComponent("report (PNG)")], to: dst)
+        XCTAssertEqual(moved.map(\.lastPathComponent), ["a 2.png", "report (PNG)"])
+        XCTAssertEqual(try Data(contentsOf: dst.appendingPathComponent("a.png")), Data([2]), "existing file untouched")
+        XCTAssertFalse(fm.fileExists(atPath: src.appendingPathComponent("a.png").path))
+        XCTAssertEqual(OutputNaming.uniqueURL(named: "notes", in: dst, fileExists: { $0.lastPathComponent == "notes" }).lastPathComponent, "notes 2")
+    }
+
+    func testOptionsDecodeWithoutSaveTo() throws {
+        // Options saved by older versions have no saveTo key.
+        let old = #"{"quality":"best","size":{"original":{}},"stripMetadata":true}"#
+        let decoded = try JSONDecoder().decode(ConversionOptions.self, from: Data(old.utf8))
+        XCTAssertEqual(decoded.quality, .best)
+        XCTAssertNil(decoded.saveTo)
+    }
+}

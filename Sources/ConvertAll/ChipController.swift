@@ -80,7 +80,7 @@ final class ChipController {
         resignObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
         ) { [weak self] _ in
-            guard let self, let model = self.model, !model.isBusy else { return }
+            guard let self, let model = self.model, !model.isBusy, !model.presentingPanel else { return }
             self.close()
         }
     }

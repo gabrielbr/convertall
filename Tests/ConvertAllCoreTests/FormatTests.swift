@@ -21,10 +21,17 @@ final class FormatTests: XCTestCase {
 
     func testCatalogueMatchesConvtApp() {
         let count = { (c: FormatCategory) in FileFormat.allCases.filter { $0.category == c }.count }
-        XCTAssertEqual(count(.image), 14)
+        // convt.app's 14 images plus input-only RAW and PSD; its 14 documents plus Markdown and EPUB.
+        XCTAssertEqual(count(.image), 16)
         XCTAssertEqual(count(.video), 5)
         XCTAssertEqual(count(.audio), 7)
-        XCTAssertEqual(count(.document) + count(.spreadsheet) + count(.presentation), 14)
+        XCTAssertEqual(count(.document) + count(.spreadsheet) + count(.presentation), 16)
+        // Input-only formats never appear as a target.
+        for inputOnly in [FileFormat.svg, .raw, .psd, .md, .epub] {
+            XCTAssertTrue(FileFormat.allCases.allSatisfy { !ConversionMatrix.targets(for: $0).contains(inputOnly) })
+        }
+        XCTAssertEqual(FileFormat(fileExtension: "CR3"), .raw)
+        XCTAssertEqual(FileFormat(fileExtension: "markdown"), .md)
     }
 
     func testSearchRanking() {
@@ -140,6 +147,7 @@ final class FFmpegTests: XCTestCase {
         XCTAssertEqual(p.duration, 62.5)
         XCTAssertEqual(p.videoCodec, "h264")
         XCTAssertEqual(p.audioCodec, "aac")
+        XCTAssertEqual(p.audioKbps, 128)
 
         let song = FFmpeg.parseProbe("""
           Duration: 00:03:10.00, start: 0.025057, bitrate: 320 kb/s
@@ -197,9 +205,16 @@ final class FFmpegTests: XCTestCase {
 
         // Compress: same format, no stream copy, HEVC for the big saving.
         let squeeze = FFmpeg.plan(from: .mp4, to: .mp4, probe: probe)
-        XCTAssertFalse(squeeze.attempts.contains { $0.contains("copy") })
+        XCTAssertFalse(squeeze.attempts.contains { $0.joined(separator: " ").contains("-c copy") }, "no full stream copy")
         XCTAssertTrue(squeeze.attempts[0].contains("hevc_videotoolbox"))
         XCTAssertTrue(squeeze.attempts[0].contains("hvc1"))
+        XCTAssertEqual(squeeze.attempts.count, 3, "hardware HEVC, then x265, then x264")
+        XCTAssertTrue(squeeze.attempts[0].joined(separator: " ").contains("-c:a copy"), "AAC soundtrack kept when compressing")
+        let lowAudio = MediaProbe(duration: 10, videoCodec: "h264", audioCodec: "mp3", audioKbps: 64)
+        XCTAssertTrue(FFmpeg.plan(from: .mov, to: .mp4, probe: lowAudio).attempts.last!.contains("64k"), "never raise the bitrate")
+        XCTAssertTrue(squeeze.attempts[1].contains("libx265"))
+        XCTAssertFalse(FFmpeg.plan(from: .mov, to: .mp4, probe: probe).attempts.contains { $0.contains("libx265") },
+                       "plain conversions stay on H.264 for compatibility")
 
         // Resizing also rules out copying, and shows up in the filter.
         let half = FFmpeg.plan(from: .mov, to: .mp4, probe: probe, options: ConversionOptions(size: .half))

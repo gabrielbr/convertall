@@ -60,10 +60,22 @@ private struct SettingsView: View {
                         Button("Turn On…") { FIFinderSyncController.showExtensionManagementInterface() }
                     }
                 }
+                ForEach(FinderPresets.Kind.allCases, id: \.self) { kind in
+                    DisclosureGroup(kind.title) {
+                        ForEach(FinderPresets.candidates(for: kind), id: \.self) { id in
+                            Toggle(Self.presetTitle(id), isOn: Binding(
+                                get: { settings.finderPreset(id, enabledFor: kind) },
+                                set: { settings.setFinderPreset(id, kind: kind, enabled: $0) }))
+                        }
+                    }
+                }
+                if settings.stored.finderPresets != nil {
+                    Button("Restore Default Presets") { settings.stored.finderPresets = nil }
+                }
             } header: {
                 Text("Finder")
             } footer: {
-                Text("Adds one-click presets (Make Smaller, → PNG, → MP4, Combine into One PDF…) right in the menu. Turn on “ConvertAll Finder Menu” under Finder extensions.")
+                Text("Choose the one-click presets “ConvertAll ▸” shows for each kind of file (Convert… is always there). Turn on “ConvertAll Finder Menu” under Finder extensions.")
                     .foregroundStyle(.secondary)
             }
 
@@ -114,8 +126,7 @@ private struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 500)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(width: 520, height: 680)  // the grouped form scrolls inside
     }
 }
 
@@ -177,6 +188,20 @@ private struct ArcadeSection: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         if images { try? ArcadeAssets.importImage(from: url) } else { try? ArcadeAssets.importSound(from: url) }
         refresh += 1
+    }
+}
+
+extension SettingsView {
+    /// Settings label for a Finder preset.
+    static func presetTitle(_ id: String) -> String {
+        switch id {
+        case "compress-same": "Make Smaller"
+        case "combine-pdf": "Combine into One PDF"
+        case "combine-mp4": "Join into One MP4"
+        case "extract-text": "Extract Text"
+        case "remove-background": "Remove Background"
+        default: FileFormat(rawValue: String(id.dropFirst("convert-".count))).map { "→ \($0.displayName)" } ?? id
+        }
     }
 }
 

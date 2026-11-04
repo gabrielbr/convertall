@@ -35,6 +35,7 @@ public enum FileSniffer {
         if ascii(0, "BM"), b.count > 14 { return .bmp }
         if at(0, [0x00, 0x00, 0x01, 0x00]) { return .ico }
         if ascii(0, "qoif") { return .qoi }
+        if ascii(0, "8BPS") { return .psd }
         if at(0, [0x76, 0x2F, 0x31, 0x01]) { return .exr }
         if b.count >= 3, b[0] == UInt8(ascii: "P"), (UInt8(ascii: "1")...UInt8(ascii: "6")).contains(b[1]),
            [0x20, 0x09, 0x0A, 0x0D].contains(b[2]) { return .pnm }
@@ -45,6 +46,7 @@ public enum FileSniffer {
             switch brand {
             case "heic", "heix", "hevc", "heim", "heis", "hevx", "mif1", "msf1": return .heic
             case "avif", "avis": return .avif
+            case "crx ": return .raw  // Canon CR3
             case "qt  ": return .mov
             case "M4A ", "M4B ", "M4P ": return .m4a
             default: return .mp4
@@ -66,7 +68,8 @@ public enum FileSniffer {
         // Documents
         if ascii(0, "%PDF") { return .pdf }
         if ascii(0, "{\\rtf") { return .rtf }
-        if at(0, [0x50, 0x4B, 0x03, 0x04]) {  // ZIP: OpenDocument or Office Open XML
+        if at(0, [0x50, 0x4B, 0x03, 0x04]) {  // ZIP: EPUB, OpenDocument or Office Open XML
+            if contains(b, "application/epub+zip", within: 128) { return .epub }
             if contains(b, "opendocument.text", within: 128) { return .odt }
             if contains(b, "opendocument.spreadsheet", within: 128) { return .ods }
             if contains(b, "opendocument.presentation", within: 128) { return .odp }

@@ -7,14 +7,17 @@ public struct MediaProbe: Equatable, Sendable {
     public var audioCodec: String?
     public var width: Int?
     public var height: Int?
+    /// The soundtrack's bitrate, when FFmpeg reports it.
+    public var audioKbps: Int?
 
     public init(duration: Double? = nil, videoCodec: String? = nil, audioCodec: String? = nil,
-                width: Int? = nil, height: Int? = nil) {
+                width: Int? = nil, height: Int? = nil, audioKbps: Int? = nil) {
         self.duration = duration
         self.videoCodec = videoCodec
         self.audioCodec = audioCodec
         self.width = width
         self.height = height
+        self.audioKbps = audioKbps
     }
 }
 
@@ -79,8 +82,11 @@ public enum FFmpeg {
         let metadata = options.stripMetadata ? ["-map_metadata", "-1", "-map_chapters", "-1"] : ["-map_metadata", "0"]
         let scale = ["-vf", videoScaleFilter(options.size)]
         let faststart = ["-movflags", "+faststart"]
-        let audioKbps = budget?.audio ?? options.audioKbps(compress: compress)
-        let aac = ["-c:a", "aac", "-b:a", "\(audioKbps)k"]
+        // Never raise the soundtrack's bitrate: that only makes files bigger, not better.
+        let audioKbps = min(budget?.audio ?? options.audioKbps(compress: compress), probe.audioKbps ?? .max)
+        let aacEncode = ["-c:a", "aac", "-b:a", "\(audioKbps)k"]
+        // Making a video smaller is about the picture: keep an AAC soundtrack as it is.
+        let aac = compress && a == "aac" && budget == nil ? ["-c:a", "copy"] : aacEncode
 
         var bitrate: [String]?
         if let budget {
@@ -114,8 +120,16 @@ public enum FFmpeg {
             } else if target != .mkv, canCopyIntoApple {
                 attempts.append(["-c", "copy"] + tail)
             }
-            // Compressing → HEVC: roughly half the size of H.264 at the same quality.
+            // Compressing → HEVC: roughly half the size of H.264 at the same quality. The hardware
+            // encoder is fast but can come out bigger than an already-efficient source, so
+            // "Make smaller" keeps going: software HEVC (x265), then x264, until a result is smaller.
             attempts.append(videoToolbox(hevc: compress) + aac + tail)
+            if compress {
+                var x265 = ["-c:v", "libx265", "-preset", "medium"]
+                x265 += bitrate ?? ["-crf", "\(options.x265CRF)"]
+                x265 += ["-pix_fmt", "yuv420p", "-tag:v", "hvc1", "-x265-params", "log-level=error"] + scale
+                attempts.append(x265 + aac + tail)
+            }
             attempts.append(x264 + aac + tail)
             return MediaPlan(attempts: attempts)
 
@@ -287,6 +301,7 @@ public enum FFmpeg {
             }
             if probe.audioCodec == nil, let m = firstMatch(#": Audio: ([A-Za-z0-9_]+)"#, in: String(line)) {
                 probe.audioCodec = m[0]
+                if let kbps = firstMatch(#"(\d+) kb/s"#, in: String(line)) { probe.audioKbps = Int(kbps[0]) }
             }
         }
         return probe

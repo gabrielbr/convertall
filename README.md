@@ -6,10 +6,10 @@ It handles the full format list from [convt.app/formats](https://convt.app/forma
 
 | Kind | Formats | Converts to | Engine |
 | --- | --- | --- | --- |
-| **Images** | JPEG, PNG, WebP, HEIC, AVIF, GIF, TIFF, BMP, ICO, TGA, PPM, QOI, EXR, SVG (input only) | Other images. GIF can also become MP4, MOV, WebM, MKV or AVI | Built in (ImageIO and pure-Swift codecs) |
+| **Images** | JPEG, PNG, WebP, HEIC, AVIF, GIF, TIFF, BMP, ICO, TGA, PPM, QOI, EXR, plus SVG, camera RAW (DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2…) and PSD (input only) | Other images. GIF can also become MP4, MOV, WebM, MKV or AVI | Built in (ImageIO and pure-Swift codecs) |
 | **Video** | MP4, MOV, WebM, MKV, AVI | Other video, any audio format (extracts the soundtrack), GIF and other images (one representative frame) | Media engine |
 | **Audio** | MP3, WAV, FLAC, AAC, M4A, OGG, Opus | Other audio | Media engine |
-| **Documents** | PDF, DOCX, DOC, ODT, RTF, TXT, HTML | Each other, PDF, images (one per page) | Built in (Cocoa text and PDFKit) |
+| **Documents** | PDF, DOCX, DOC, ODT, RTF, TXT, HTML, plus Markdown and EPUB (input only) | Each other, PDF, images (one per page) | Built in (Cocoa text and PDFKit) |
 | **Spreadsheets** | XLSX, XLS, ODS, CSV | Each other, PDF, images | LibreOffice |
 | **Presentations** | PPTX, PPT, ODP | Each other, PDF, images | LibreOffice |
 
@@ -150,6 +150,18 @@ Turn it on in **Settings › Arcade**, or type **↑↑↓↓←→←→BA** in
 - **Reduce Motion.** If Reduce Motion is on in macOS, the effects fade in and out instead of moving.
 - **Font.** The arcade font is [Press Start 2P](https://fonts.google.com/specimen/Press+Start+2P), under the SIL Open Font License. Its license is in `Support/Fonts/OFL.txt`.
 
+### Where files go, and your own Finder menu
+
+- **Save to….** The folder button in the options strip chooses where results go:
+  - **Beside**, next to the original (the default).
+  - Desktop, Downloads, Documents or Pictures.
+  - **Choose Folder…** for any other folder.
+
+  The choice is remembered, and existing files are never overwritten. On the command line, use `--out <folder>`.
+- **Your Finder menu.** In **Settings › Finder**, choose which one-click presets "ConvertAll ▸" offers for images, video, audio, PDFs and documents. **Convert…** is always there.
+  - The Finder extension is sandboxed, so it can't read ConvertAll's settings. ConvertAll sends it your choice as a system-wide (distributed) notification whenever the choice changes, and when the extension starts.
+  - The extension keeps the last list it received, so the menu is right even when ConvertAll isn't running.
+
 ### Design decisions
 
 - **The chip sits where your attention already is.** It opens next to the pointer you just used for the right-click, so your eyes don't have to move.
@@ -183,7 +195,8 @@ Development:
 
 ```sh
 swift build          # debug build
-swift test           # codec, search and naming tests (also run on Linux)
+swift test           # unit tests (also run on Linux)
+scripts/smoke-test.sh build/ConvertAll.app   # real conversions through the bundled CLI, on a Mac
 python3 scripts/make-icon.py   # regenerate Support/AppIcon.icns (needs Pillow)
 ```
 
@@ -219,6 +232,8 @@ Sources/
     FormatSearch.swift       ranking of what the user types ("jp" → JPEG, "song" → MP3)
     FolderScanner.swift      folders → the convertible files inside
     FileSniffer.swift        identify files by their bytes (rename-to-convert, misnamed files)
+    FinderPresets.swift      the Finder menu's presets (shared by app and extension)
+    Markdown.swift           Markdown → HTML for document conversion
     OutputNaming.swift       "photo.png", "photo 2.png", "report (PNG)/report 01.png" … never overwrite
     RGBAImage.swift          plain 8-bit RGBA buffer + alpha flattening
     Codecs/QOI|PNM|TGA       pure-Swift encoders/decoders (verified against Pillow)
@@ -257,6 +272,7 @@ Support/
   AppIcon.icns
 project.yml                  XcodeGen spec (app + CLI) for release builds
 scripts/build-app.sh         Xcode (via XcodeGen) or SwiftPM → ConvertAll.app bundle
+scripts/smoke-test.sh        end-to-end conversions on a real Mac (run in CI on every build)
 ```
 
 ## Known limitations
@@ -264,5 +280,5 @@ scripts/build-app.sh         Xcode (via XcodeGen) or SwiftPM → ConvertAll.app 
 - Animated sources keep their animation only when the target can hold it (GIF, APNG, WebP, AVIF, video). Other targets get the first frame.
 - Video to a still image keeps one representative frame.
 - PDF to DOCX, ODT, RTF and the other text formats keeps the text and basic styling, but not the exact layout. Scanned PDFs are read with OCR, which gives plain text only.
-- There's no settings UI yet. Output always goes next to the original.
-- The Finder menu's presets are fixed; customising them is planned.
+- Camera RAW and PSD files are read through macOS's own decoders: you get the default development of a RAW file and the flattened image of a PSD, not individual layers.
+- Markdown support covers everyday syntax (headings, emphasis, code, links, images, lists, quotes). Tables and footnotes come through as plain text.

@@ -80,11 +80,14 @@ public struct ConversionOptions: Codable, Equatable, Sendable {
     public var quality: Quality
     public var size: Size
     public var stripMetadata: Bool
+    /// Folder for the results; nil = next to each original.
+    public var saveTo: String?
 
-    public init(quality: Quality = .balanced, size: Size = .original, stripMetadata: Bool = false) {
+    public init(quality: Quality = .balanced, size: Size = .original, stripMetadata: Bool = false, saveTo: String? = nil) {
         self.quality = quality
         self.size = size
         self.stripMetadata = stripMetadata
+        self.saveTo = saveTo
     }
 
     public var isDefault: Bool { self == ConversionOptions() }
@@ -111,6 +114,15 @@ public struct ConversionOptions: Codable, Equatable, Sendable {
         case .smaller: compress ? 30 : 26
         case .balanced: compress ? 26 : 21
         case .best: compress ? 22 : 18
+        }
+    }
+
+    /// libx265, the software fallback for "Make smaller" when the hardware encoder doesn't shrink the file.
+    public var x265CRF: Int {
+        switch quality {
+        case .smaller: 30
+        case .balanced: 28
+        case .best: 24
         }
     }
 

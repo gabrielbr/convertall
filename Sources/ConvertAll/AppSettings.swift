@@ -56,6 +56,8 @@ final class AppSettings: ObservableObject {
         }
         var watched: [WatchRule] = []
         var arcade = Arcade()
+        /// Finder menu presets per kind; nil = the defaults.
+        var finderPresets: FinderPresets.Config?
 
         init() {}
 
@@ -70,6 +72,7 @@ final class AppSettings: ObservableObject {
             renameFolders = try c.decodeIfPresent([String].self, forKey: .renameFolders) ?? d.renameFolders
             watched = try c.decodeIfPresent([WatchRule].self, forKey: .watched) ?? d.watched
             arcade = try c.decodeIfPresent(Arcade.self, forKey: .arcade) ?? d.arcade
+            finderPresets = try c.decodeIfPresent(FinderPresets.Config.self, forKey: .finderPresets)
         }
     }
 
@@ -94,6 +97,30 @@ final class AppSettings: ObservableObject {
     /// Any feature that has to keep ConvertAll running in the background.
     var staysRunning: Bool {
         stored.menuBar || stored.clipboardHotkey || stored.renameToConvert || !stored.watched.isEmpty
+    }
+
+    // MARK: Finder menu presets
+
+    var finderConfig: FinderPresets.Config { stored.finderPresets ?? FinderPresets.defaults }
+
+    func finderPreset(_ id: String, enabledFor kind: FinderPresets.Kind) -> Bool {
+        finderConfig[kind.rawValue]?.contains(id) ?? false
+    }
+
+    /// Turns a preset on/off, keeping the menu in the candidates' order.
+    func setFinderPreset(_ id: String, kind: FinderPresets.Kind, enabled: Bool) {
+        var config = finderConfig
+        var ids = Set(config[kind.rawValue] ?? [])
+        if enabled { ids.insert(id) } else { ids.remove(id) }
+        config[kind.rawValue] = FinderPresets.candidates(for: kind).filter(ids.contains)
+        stored.finderPresets = config
+    }
+
+    /// Sends the presets to the Finder extension (sandboxed; it can't read our settings).
+    func publishFinderPresets() {
+        DistributedNotificationCenter.default().postNotificationName(
+            Notification.Name(FinderPresets.notificationName), object: FinderPresets.encode(finderConfig),
+            userInfo: nil, deliverImmediately: true)
     }
 
     // MARK: Open at login (macOS 13 ServiceManagement)

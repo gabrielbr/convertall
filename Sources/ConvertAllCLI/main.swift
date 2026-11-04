@@ -19,6 +19,7 @@ options:
   --size <s>             50% | <pixels> (longest side) | <n>KB | <n>MB (target file size)
   --no-metadata          strip location, camera and author details
   --trim <start-end>     keep part of a video/audio clip, e.g. 0:10-1:05 or 10-65
+  --out <folder>         save results in this folder (default: next to each original)
   --install-engine       download what's missing (media engine or document pack), then continue
   --formats              list every format and what it converts to
   --version
@@ -73,6 +74,9 @@ while let arg = args.popFirst() {
     case "--text": action = .text
     case "--cutout": action = .cutout
     case "--no-metadata": options.stripMetadata = true
+    case "--out":
+        guard let dir = args.popFirst() else { fail("--out needs a folder") }
+        options.saveTo = URL(fileURLWithPath: (dir as NSString).expandingTildeInPath).standardizedFileURL.path
     case "--install-engine": installEngine = true
     case "--quality":
         guard let q = args.popFirst().flatMap(ConversionOptions.Quality.init(rawValue:)) else { fail("--quality takes smaller, balanced or best") }
@@ -137,7 +141,9 @@ if installEngine, MediaEngine.ffmpegURL == nil, !needsOffice {
 var failures = 0
 func run(_ name: String, _ body: () throws -> [URL]) {
     do {
-        for url in try body() { print(url.path) }
+        var made = try body()
+        if let folder = options.saveTo { made = try OutputNaming.relocate(made, to: URL(fileURLWithPath: folder, isDirectory: true)) }
+        for url in made { print(url.path) }
     } catch {
         failures += 1
         var message = error.localizedDescription

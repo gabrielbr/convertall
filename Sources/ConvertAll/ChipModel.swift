@@ -326,7 +326,9 @@ final class ChipModel: ObservableObject {
             }
             begin(action, tasks: [task])
             Task { @MainActor in
-                let result = await Self.inBackground { try Combiner.combine(files, sources: sources, to: target, options: options, task: task) }
+                let result = await Self.inBackground {
+                    try ChipModel.place([Combiner.combine(files, sources: sources, to: target, options: options, task: task)], options)[0]
+                }
                 switch result {
                 case .success(let out): finish(action, outputs: [out], failures: [], skipped: 0, before: before, started: started, reveal: reveal)
                 case .failure(let error) where error is CancellationError: backToPicking()
@@ -353,11 +355,12 @@ final class ChipModel: ObservableObject {
             let file = files[jobs[k]], source = sources[jobs[k]], task = tasks[k]
             return {
                 (k, await ChipModel.inBackground {
-                    switch action {
+                    let made: [URL] = switch action {
                     case .extractText: [try VisionEngine.extractText(file, from: source, task: task)]
                     case .removeBackground: [try VisionEngine.removeBackground(file, from: source, options: options, task: task)]
                     default: try Converter.convert(file, from: source, to: target, options: options, trim: trim, task: task)
                     }
+                    return try ChipModel.place(made, options)
                 })
             }
         }
@@ -453,6 +456,26 @@ final class ChipModel: ObservableObject {
             return
         }
         pb.writeObjects(items)
+    }
+
+    /// "Save to…": results move to the chosen folder (else they stay next to the originals).
+    static func place(_ outputs: [URL], _ options: ConversionOptions) throws -> [URL] {
+        guard let folder = options.saveTo else { return outputs }
+        return try OutputNaming.relocate(outputs, to: URL(fileURLWithPath: folder, isDirectory: true))
+    }
+
+    /// While a folder picker is open the chip must not close (it loses key focus to the panel).
+    var presentingPanel = false
+
+    func chooseSaveFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Save Here"
+        presentingPanel = true
+        defer { presentingPanel = false }
+        if panel.runModal() == .OK, let url = panel.url { options.saveTo = url.path }
     }
 
     /// Runs blocking conversion work off the main thread (and off Swift's cooperative pool).

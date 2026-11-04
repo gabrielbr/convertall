@@ -44,6 +44,35 @@ public enum OutputNaming {
         return candidate
     }
 
+    /// Moves finished results (files or multi-page folders) into `folder`, never overwriting:
+    /// `photo.png` → `folder/photo.png`, or `folder/photo 2.png` if that exists.
+    public static func relocate(_ outputs: [URL], to folder: URL) throws -> [URL] {
+        let fm = FileManager.default
+        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        return try outputs.map { output in
+            guard output.deletingLastPathComponent().standardizedFileURL != folder.standardizedFileURL else { return output }
+            let dest = uniqueURL(named: output.lastPathComponent, in: folder)
+            try fm.moveItem(at: output, to: dest)
+            return dest
+        }
+    }
+
+    /// `name.ext`, else `name 2.ext`, `name 3.ext`… in `folder`.
+    public static func uniqueURL(
+        named name: String, in folder: URL,
+        fileExists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }
+    ) -> URL {
+        let ext = (name as NSString).pathExtension
+        let base = (name as NSString).deletingPathExtension
+        var candidate = folder.appendingPathComponent(name)
+        var n = 2
+        while fileExists(candidate) {
+            candidate = folder.appendingPathComponent(ext.isEmpty ? "\(base) \(n)" : "\(base) \(n).\(ext)")
+            n += 1
+        }
+        return candidate
+    }
+
     /// Page files inside that folder, zero-padded so they sort: `report 01.png` … `report 12.png`.
     public static func pageFiles(for source: URL, format: FileFormat, count: Int, in folder: URL) -> [URL] {
         let base = source.deletingPathExtension().lastPathComponent

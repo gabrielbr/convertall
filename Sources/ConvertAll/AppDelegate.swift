@@ -25,8 +25,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         WelcomeWindow.shared.onDidClose = { [weak self] in self?.scheduleIdleQuit() }
         AppSettings.shared.onChange = { [weak self] in
             BackgroundServices.shared.apply()
+            AppSettings.shared.publishFinderPresets()
             self?.scheduleIdleQuit()
         }
+        // The Finder extension asks for its presets when it starts; answer whenever we're running.
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name(FinderPresets.requestNotificationName), object: nil, queue: .main
+        ) { _ in AppSettings.shared.publishFinderPresets() }
+        AppSettings.shared.publishFinderPresets()
         BackgroundServices.shared.apply()
         BackgroundServices.cleanClipboardFolder()
         ArcadeAssets.registerFont()

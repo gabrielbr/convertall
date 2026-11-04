@@ -21,10 +21,17 @@ final class FormatTests: XCTestCase {
 
     func testCatalogueMatchesConvtApp() {
         let count = { (c: FormatCategory) in FileFormat.allCases.filter { $0.category == c }.count }
-        XCTAssertEqual(count(.image), 14)
+        // convt.app's 14 images plus input-only RAW and PSD; its 14 documents plus Markdown and EPUB.
+        XCTAssertEqual(count(.image), 16)
         XCTAssertEqual(count(.video), 5)
         XCTAssertEqual(count(.audio), 7)
-        XCTAssertEqual(count(.document) + count(.spreadsheet) + count(.presentation), 14)
+        XCTAssertEqual(count(.document) + count(.spreadsheet) + count(.presentation), 16)
+        // Input-only formats never appear as a target.
+        for inputOnly in [FileFormat.svg, .raw, .psd, .md, .epub] {
+            XCTAssertTrue(FileFormat.allCases.allSatisfy { !ConversionMatrix.targets(for: $0).contains(inputOnly) })
+        }
+        XCTAssertEqual(FileFormat(fileExtension: "CR3"), .raw)
+        XCTAssertEqual(FileFormat(fileExtension: "markdown"), .md)
     }
 
     func testSearchRanking() {

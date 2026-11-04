@@ -76,6 +76,9 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_ENTITLEMENTS: Extensions/FinderSync/FinderSync.entitlements
         SKIP_INSTALL: YES
+    dependencies:
+      - package: ConvertAllKit
+        product: ConvertAllCore
   convertall:
     type: tool
     platform: macOS

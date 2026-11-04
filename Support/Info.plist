@@ -19,7 +19,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.8.2</string>
+	<string>0.9.0</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationCategoryType</key>
@@ -82,6 +82,16 @@
 				<string>org.qoiformat.qoi</string>
 				<string>com.ilm.openexr-image</string>
 				<string>public.svg-image</string>
+				<string>public.camera-raw-image</string>
+				<string>com.adobe.raw-image</string>
+				<string>com.canon.cr2-raw-image</string>
+				<string>com.canon.cr3-raw-image</string>
+				<string>com.nikon.raw-image</string>
+				<string>com.sony.arw-raw-image</string>
+				<string>com.fuji.raw-image</string>
+				<string>com.olympus.raw-image</string>
+				<string>com.panasonic.rw2-raw-image</string>
+				<string>com.adobe.photoshop-image</string>
 				<string>public.mpeg-4</string>
 				<string>com.apple.m4v-video</string>
 				<string>com.apple.quicktime-movie</string>
@@ -103,6 +113,8 @@
 				<string>public.rtf</string>
 				<string>public.plain-text</string>
 				<string>public.html</string>
+				<string>net.daringfireball.markdown</string>
+				<string>org.idpf.epub-container</string>
 				<string>org.openxmlformats.spreadsheetml.sheet</string>
 				<string>com.microsoft.excel.xls</string>
 				<string>org.oasis-open.opendocument.spreadsheet</string>
@@ -266,6 +278,25 @@
 				</array>
 				<key>public.mime-type</key>
 				<string>audio/flac</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>net.daringfireball.markdown</string>
+			<key>UTTypeDescription</key>
+			<string>Markdown document</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>md</string>
+					<string>markdown</string>
+					<string>mdown</string>
+				</array>
 			</dict>
 		</dict>
 	</array>

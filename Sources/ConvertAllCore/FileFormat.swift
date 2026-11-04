@@ -31,13 +31,13 @@ public enum FormatCategory: String, CaseIterable, Codable, Sendable {
 /// Every format ConvertAll knows about — the full list from convt.app/formats.
 public enum FileFormat: String, CaseIterable, Identifiable, Codable, Sendable {
     // Images
-    case jpeg, png, webp, heic, avif, gif, tiff, bmp, ico, tga, pnm, qoi, exr, svg
+    case jpeg, png, webp, heic, avif, gif, tiff, bmp, ico, tga, pnm, qoi, exr, svg, raw, psd
     // Video
     case mp4, mov, webm, mkv, avi
     // Audio
     case mp3, wav, flac, aac, m4a, ogg, opus
     // Documents
-    case pdf, docx, doc, odt, rtf, txt, html
+    case pdf, docx, doc, odt, rtf, txt, html, md, epub
     // Spreadsheets
     case xlsx, xls, ods, csv
     // Presentations
@@ -47,10 +47,10 @@ public enum FileFormat: String, CaseIterable, Identifiable, Codable, Sendable {
 
     public var category: FormatCategory {
         switch self {
-        case .jpeg, .png, .webp, .heic, .avif, .gif, .tiff, .bmp, .ico, .tga, .pnm, .qoi, .exr, .svg: .image
+        case .jpeg, .png, .webp, .heic, .avif, .gif, .tiff, .bmp, .ico, .tga, .pnm, .qoi, .exr, .svg, .raw, .psd: .image
         case .mp4, .mov, .webm, .mkv, .avi: .video
         case .mp3, .wav, .flac, .aac, .m4a, .ogg, .opus: .audio
-        case .pdf, .docx, .doc, .odt, .rtf, .txt, .html: .document
+        case .pdf, .docx, .doc, .odt, .rtf, .txt, .html, .md, .epub: .document
         case .xlsx, .xls, .ods, .csv: .spreadsheet
         case .pptx, .ppt, .odp: .presentation
         }
@@ -73,6 +73,8 @@ public enum FileFormat: String, CaseIterable, Identifiable, Codable, Sendable {
         case .qoi: "QOI"
         case .exr: "EXR"
         case .svg: "SVG"
+        case .raw: "RAW"
+        case .psd: "PSD"
         case .mp4: "MP4"
         case .mov: "MOV"
         case .webm: "WebM"
@@ -92,6 +94,8 @@ public enum FileFormat: String, CaseIterable, Identifiable, Codable, Sendable {
         case .rtf: "RTF"
         case .txt: "TXT"
         case .html: "HTML"
+        case .md: "MD"
+        case .epub: "EPUB"
         case .xlsx: "XLSX"
         case .xls: "XLS"
         case .ods: "ODS"
@@ -119,6 +123,8 @@ public enum FileFormat: String, CaseIterable, Identifiable, Codable, Sendable {
         case .qoi: "Quite OK Image · fast lossless"
         case .exr: "HDR · VFX pipelines"
         case .svg: "Vector graphics"
+        case .raw: "Camera RAW photo"
+        case .psd: "Photoshop document"
         case .mp4: "Plays everywhere · H.264"
         case .mov: "QuickTime · Apple apps"
         case .webm: "Web video · VP9 + Opus"
@@ -138,6 +144,8 @@ public enum FileFormat: String, CaseIterable, Identifiable, Codable, Sendable {
         case .rtf: "Rich text · opens in any editor"
         case .txt: "Just the words"
         case .html: "Web page"
+        case .md: "Markdown text"
+        case .epub: "E-book"
         case .xlsx: "Microsoft Excel"
         case .xls: "Excel 97–2003"
         case .ods: "LibreOffice Calc"
@@ -165,6 +173,8 @@ public enum FileFormat: String, CaseIterable, Identifiable, Codable, Sendable {
         case .qoi: ["qoi"]
         case .exr: ["exr"]
         case .svg: ["svg"]
+        case .raw: ["dng", "cr2", "cr3", "nef", "arw", "raf", "orf", "rw2", "pef", "srw", "nrw", "3fr", "iiq"]
+        case .psd: ["psd"]
         case .mp4: ["mp4", "m4v"]
         case .mov: ["mov", "qt"]
         case .webm: ["webm"]
@@ -184,6 +194,8 @@ public enum FileFormat: String, CaseIterable, Identifiable, Codable, Sendable {
         case .rtf: ["rtf"]
         case .txt: ["txt", "text"]
         case .html: ["html", "htm"]
+        case .md: ["md", "markdown", "mdown"]
+        case .epub: ["epub"]
         case .xlsx: ["xlsx"]
         case .xls: ["xls"]
         case .ods: ["ods"]
@@ -213,6 +225,10 @@ public enum FileFormat: String, CaseIterable, Identifiable, Codable, Sendable {
         case .qoi: ["org.qoiformat.qoi"]
         case .exr: ["com.ilm.openexr-image"]
         case .svg: ["public.svg-image"]
+        case .raw: ["public.camera-raw-image", "com.adobe.raw-image", "com.canon.cr2-raw-image", "com.canon.cr3-raw-image",
+                    "com.nikon.raw-image", "com.sony.arw-raw-image", "com.fuji.raw-image", "com.olympus.raw-image",
+                    "com.panasonic.rw2-raw-image"]
+        case .psd: ["com.adobe.photoshop-image"]
         case .mp4: ["public.mpeg-4", "com.apple.m4v-video"]
         case .mov: ["com.apple.quicktime-movie"]
         case .webm: ["org.webmproject.webm"]
@@ -232,6 +248,8 @@ public enum FileFormat: String, CaseIterable, Identifiable, Codable, Sendable {
         case .rtf: ["public.rtf"]
         case .txt: ["public.plain-text"]
         case .html: ["public.html"]
+        case .md: ["net.daringfireball.markdown"]
+        case .epub: ["org.idpf.epub-container"]
         case .xlsx: ["org.openxmlformats.spreadsheetml.sheet"]
         case .xls: ["com.microsoft.excel.xls"]
         case .ods: ["org.oasis-open.opendocument.spreadsheet"]
@@ -259,6 +277,8 @@ public enum FileFormat: String, CaseIterable, Identifiable, Codable, Sendable {
         case .qoi: ["quite ok"]
         case .exr: ["openexr", "hdr", "vfx"]
         case .svg: ["vector"]
+        case .raw: ["dng", "cr2", "nef", "arw", "camera", "negative"]
+        case .psd: ["photoshop", "adobe"]
         case .mp4: ["m4v", "h264", "video", "mpeg"]
         case .mov: ["quicktime", "apple video"]
         case .webm: ["vp9", "web video"]
@@ -278,6 +298,8 @@ public enum FileFormat: String, CaseIterable, Identifiable, Codable, Sendable {
         case .rtf: ["rich text", "wordpad"]
         case .txt: ["text", "plain"]
         case .html: ["htm", "web page", "website"]
+        case .md: ["markdown", "readme"]
+        case .epub: ["ebook", "book", "kindle"]
         case .xlsx: ["excel", "spreadsheet"]
         case .xls: ["old excel"]
         case .ods: ["calc", "opendocument spreadsheet"]

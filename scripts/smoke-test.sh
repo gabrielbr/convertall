@@ -8,6 +8,7 @@
 set -uo pipefail
 
 APP="${1:-build/ConvertAll.app}"
+APP="$(cd "$APP" && pwd)"  # absolute: the tests run inside a scratch folder
 CLI="$APP/Contents/Helpers/convertall"
 [[ -x "$CLI" ]] || { echo "no CLI at $CLI" >&2; exit 2; }
 WORK="$(mktemp -d)"

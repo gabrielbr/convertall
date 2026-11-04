@@ -7,14 +7,17 @@ public struct MediaProbe: Equatable, Sendable {
     public var audioCodec: String?
     public var width: Int?
     public var height: Int?
+    /// The soundtrack's bitrate, when FFmpeg reports it.
+    public var audioKbps: Int?
 
     public init(duration: Double? = nil, videoCodec: String? = nil, audioCodec: String? = nil,
-                width: Int? = nil, height: Int? = nil) {
+                width: Int? = nil, height: Int? = nil, audioKbps: Int? = nil) {
         self.duration = duration
         self.videoCodec = videoCodec
         self.audioCodec = audioCodec
         self.width = width
         self.height = height
+        self.audioKbps = audioKbps
     }
 }
 
@@ -79,8 +82,11 @@ public enum FFmpeg {
         let metadata = options.stripMetadata ? ["-map_metadata", "-1", "-map_chapters", "-1"] : ["-map_metadata", "0"]
         let scale = ["-vf", videoScaleFilter(options.size)]
         let faststart = ["-movflags", "+faststart"]
-        let audioKbps = budget?.audio ?? options.audioKbps(compress: compress)
-        let aac = ["-c:a", "aac", "-b:a", "\(audioKbps)k"]
+        // Never raise the soundtrack's bitrate: that only makes files bigger, not better.
+        let audioKbps = min(budget?.audio ?? options.audioKbps(compress: compress), probe.audioKbps ?? .max)
+        let aacEncode = ["-c:a", "aac", "-b:a", "\(audioKbps)k"]
+        // Making a video smaller is about the picture: keep an AAC soundtrack as it is.
+        let aac = compress && a == "aac" && budget == nil ? ["-c:a", "copy"] : aacEncode
 
         var bitrate: [String]?
         if let budget {
@@ -295,6 +301,7 @@ public enum FFmpeg {
             }
             if probe.audioCodec == nil, let m = firstMatch(#": Audio: ([A-Za-z0-9_]+)"#, in: String(line)) {
                 probe.audioCodec = m[0]
+                if let kbps = firstMatch(#"(\d+) kb/s"#, in: String(line)) { probe.audioKbps = Int(kbps[0]) }
             }
         }
         return probe

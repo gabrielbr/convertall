@@ -12,12 +12,21 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
     func show() {
         if window == nil {
-            let hosting = NSHostingView(rootView: SettingsView())
-            let w = NSWindow(contentRect: NSRect(origin: .zero, size: hosting.fittingSize),
-                             styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            w.title = "ConvertAll Settings"
+            let tabs = NSTabViewController()
+            tabs.tabStyle = .toolbar
+            for tab in SettingsTab.allCases {
+                let item = NSTabViewItem(viewController: NSHostingController(rootView: tab.view))
+                item.label = tab.title
+                item.image = NSImage(systemSymbolName: tab.symbol, accessibilityDescription: tab.title)
+                tabs.addTabViewItem(item)
+            }
+            let w = NSWindow(contentViewController: tabs)
+            w.styleMask = [.titled, .closable, .resizable, .miniaturizable]
+            w.toolbarStyle = .preference
+            w.setContentSize(NSSize(width: 540, height: 440))
+            w.contentMinSize = NSSize(width: 460, height: 260)
             w.isReleasedWhenClosed = false
-            w.contentView = hosting
+            w.setFrameAutosaveName("ConvertAllSettings")
             w.delegate = self
             w.center()
             window = w
@@ -31,11 +40,57 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     }
 }
 
-private struct SettingsView: View {
+/// Settings is split into toolbar tabs so each page fits without scrolling; the window resizes.
+private enum SettingsTab: CaseIterable {
+    case general, finder, folders, arcade, advanced
+
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .finder: "Finder"
+        case .folders: "Folders"
+        case .arcade: "Arcade"
+        case .advanced: "Advanced"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .general: "gearshape"
+        case .finder: "contextualmenu.and.cursorarrow"
+        case .folders: "folder"
+        case .arcade: "gamecontroller"
+        case .advanced: "terminal"
+        }
+    }
+
+    var view: AnyView {
+        switch self {
+        case .general: AnyView(GeneralPane())
+        case .finder: AnyView(FinderPane())
+        case .folders: AnyView(FoldersPane())
+        case .arcade: AnyView(SettingsPane { ArcadeSection(settings: AppSettings.shared) })
+        case .advanced: AnyView(AdvancedPane())
+        }
+    }
+}
+
+/// A grouped form that scrolls when the window is made smaller than its content.
+private struct SettingsPane<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        Form { content }
+            .formStyle(.grouped)
+            .frame(minWidth: 460, idealWidth: 540, maxWidth: .infinity, minHeight: 260, idealHeight: 440, maxHeight: .infinity)
+    }
+}
+
+private struct GeneralPane: View {
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
-        Form {
+        SettingsPane {
             Section {
                 Toggle("Show ConvertAll in the menu bar", isOn: $settings.stored.menuBar)
                 Toggle("Open at login", isOn: Binding(get: { settings.opensAtLogin }, set: { settings.opensAtLogin = $0 }))
@@ -49,7 +104,15 @@ private struct SettingsView: View {
                      : "With everything off, ConvertAll quits itself shortly after each conversion.")
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+}
 
+private struct FinderPane: View {
+    @ObservedObject private var settings = AppSettings.shared
+
+    var body: some View {
+        SettingsPane {
             Section {
                 HStack {
                     Text("ConvertAll menu in Finder's right-click menu")
@@ -63,7 +126,7 @@ private struct SettingsView: View {
                 ForEach(FinderPresets.Kind.allCases, id: \.self) { kind in
                     DisclosureGroup(kind.title) {
                         ForEach(FinderPresets.candidates(for: kind), id: \.self) { id in
-                            Toggle(Self.presetTitle(id), isOn: Binding(
+                            Toggle(SettingsView.presetTitle(id), isOn: Binding(
                                 get: { settings.finderPreset(id, enabledFor: kind) },
                                 set: { settings.setFinderPreset(id, kind: kind, enabled: $0) }))
                         }
@@ -78,7 +141,15 @@ private struct SettingsView: View {
                 Text("Choose the one-click presets “ConvertAll ▸” shows for each kind of file (Convert… is always there). Turn on “ConvertAll Finder Menu” under Finder extensions.")
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+}
 
+private struct FoldersPane: View {
+    @ObservedObject private var settings = AppSettings.shared
+
+    var body: some View {
+        SettingsPane {
             Section {
                 Toggle("Rename to convert", isOn: $settings.stored.renameToConvert)
                 if settings.stored.renameToConvert {
@@ -104,9 +175,15 @@ private struct SettingsView: View {
                 Text("New files dropped into a watched folder are converted automatically into its “Converted” subfolder.")
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+}
 
-            ArcadeSection(settings: settings)
+private struct AdvancedPane: View {
+    @ObservedObject private var settings = AppSettings.shared
 
+    var body: some View {
+        SettingsPane {
             Section {
                 HStack {
                     Text("convertall")
@@ -125,10 +202,11 @@ private struct SettingsView: View {
                 Text("Command line & Shortcuts")
             }
         }
-        .formStyle(.grouped)
-        .frame(width: 520, height: 680)  // the grouped form scrolls inside
     }
 }
+
+/// Namespace for helpers shared by the panes.
+private enum SettingsView {}
 
 /// 90s fighting-game skin.
 private struct ArcadeSection: View {
@@ -200,7 +278,7 @@ extension SettingsView {
         case "combine-mp4": "Join into One MP4"
         case "extract-text": "Extract Text"
         case "remove-background": "Remove Background"
-        default: FileFormat(rawValue: String(id.dropFirst("convert-".count))).map { "→ \($0.displayName)" } ?? id
+        default: FileFormat(rawValue: String(id.dropFirst("convert-".count))).map { "Convert to \($0.displayName)" } ?? id
         }
     }
 }
@@ -219,7 +297,7 @@ private struct WatchRow: View {
                 Divider()
                 ForEach(FormatCategory.allCases, id: \.self) { category in
                     ForEach(FileFormat.allCases.filter { $0.category == category && $0 != .svg }) { f in
-                        Text("→ \(f.displayName)").tag(f.rawValue)
+                        Text("Convert to \(f.displayName)").tag(f.rawValue)
                     }
                 }
             }

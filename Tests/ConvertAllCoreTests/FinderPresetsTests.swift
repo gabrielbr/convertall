@@ -15,22 +15,22 @@ final class FinderPresetsTests: XCTestCase {
     func testDefaultItems() {
         let jpeg = FinderPresets.items(for: [url("a.jpg")], isFolder: false, config: nil).map(\.title)
         XCTAssertEqual(jpeg.first, "Make Smaller")
-        XCTAssertTrue(jpeg.contains("→ PNG"))
-        XCTAssertFalse(jpeg.contains("→ JPEG"), "no same-format convert")
-        XCTAssertTrue(jpeg.contains("→ PDF"))
+        XCTAssertTrue(jpeg.contains("Convert to PNG"))
+        XCTAssertFalse(jpeg.contains("Convert to JPEG"), "no same-format convert")
+        XCTAssertTrue(jpeg.contains("Convert to PDF"))
 
         let two = FinderPresets.items(for: [url("a.jpg"), url("b.png")], isFolder: false, config: nil).map(\.title)
         XCTAssertFalse(two.contains("Make Smaller"), "mixed formats can't compress to one format")
         XCTAssertTrue(two.contains("Combine into One PDF"))
 
         let video = FinderPresets.items(for: [url("clip.mov")], isFolder: false, config: nil).map(\.title)
-        XCTAssertTrue(video.contains("→ MP3 (audio)"))
+        XCTAssertTrue(video.contains("Convert to MP3 (audio)"))
         XCTAssertFalse(video.contains("Join into One MP4"))
         XCTAssertTrue(FinderPresets.items(for: [url("a.mov"), url("b.mp4")], isFolder: false, config: nil)
             .map(\.title).contains("Join into One MP4"))
 
         XCTAssertEqual(FinderPresets.items(for: [url("deck.pptx")], isFolder: false, config: nil).map(\.title),
-                       ["→ PDF", "→ PNG (pages)"])
+                       ["Convert to PDF", "Convert to PNG (pages)"])
         XCTAssertTrue(FinderPresets.items(for: [url("a.jpg"), url("b.mp3")], isFolder: false, config: nil).isEmpty)
         XCTAssertEqual(FinderPresets.items(for: [url("x")], isFolder: true, config: nil).count, 3)
     }
@@ -40,7 +40,7 @@ final class FinderPresetsTests: XCTestCase {
         let decoded = FinderPresets.decode(FinderPresets.encode(config))
         XCTAssertEqual(decoded, config)
         let titles = FinderPresets.items(for: [url("a.heic")], isFolder: false, config: decoded).map(\.title)
-        XCTAssertEqual(titles, ["→ AVIF", "Extract Text"])
+        XCTAssertEqual(titles, ["Convert to AVIF", "Extract Text"])
         // Kinds missing from a custom config fall back to the defaults.
         XCTAssertFalse(FinderPresets.items(for: [url("a.mp3")], isFolder: false, config: decoded).isEmpty)
         XCTAssertNil(FinderPresets.decode("not json"))

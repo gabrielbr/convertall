@@ -116,11 +116,11 @@ Open **Settings** with ⌘, from the welcome window or the menu bar icon. Everyt
 ### Finder menu and the document pack
 
 - **ConvertAll in Finder's right-click menu.** A Finder extension adds a **ConvertAll ▸** submenu with presets that fit the selection:
-  - Images: Make Smaller, → PNG, JPEG, HEIC or WebP, → PDF (or **Combine into One PDF**), Extract Text, Remove Background.
-  - Video: Make Smaller, → MP4, → GIF, → MP3, Join into One MP4.
-  - Audio: Make Smaller, → MP3, M4A or WAV.
-  - PDF: Make Smaller, → DOCX, → PNG pages, → Text.
-  - Office documents: → PDF, → PNG pages.
+  - Images: Make Smaller, Convert to PNG, JPEG, HEIC or WebP, Convert to PDF (or **Combine into One PDF**), Extract Text, Remove Background.
+  - Video: Make Smaller, Convert to MP4, GIF or MP3, Join into One MP4.
+  - Audio: Make Smaller, Convert to MP3, M4A or WAV.
+  - PDF: Make Smaller, Convert to DOCX, PNG pages or Text.
+  - Office documents: Convert to PDF or PNG pages.
 
   **Convert…** opens the chip. A preset starts converting right away, with the chip showing progress next to the pointer.
   - To turn it on, go to **Settings › Finder › Turn On…** and enable "ConvertAll Finder Menu".
@@ -167,6 +167,9 @@ Turn it on in **Settings › Arcade**, or type **↑↑↓↓←→←→BA** in
 - **The chip sits where your attention already is.** It opens next to the pointer you just used for the right-click, so your eyes don't have to move.
 - **One fixed footprint.** Searching, converting, success and error states all use the same size, so nothing jumps under the pointer. Search dims the formats that don't match rather than removing them, so each pill stays where your muscle memory expects it.
 - **It remembers your last choice.** The most recent format that fits the current file is already selected, so converting another file the same way takes a single **↩**.
+- **Accessible by default.** Every control has a VoiceOver label. Conversions announce when they start and finish, and the chip doesn't close itself while VoiceOver is on. Text follows the system's text styles, and Reduce Motion turns off the chip's animations.
+- **Keyboard first.** ↑↓ and Return pick a format. ←/→ move between pills while the search field is empty and edit the text once you type. Tab moves focus as usual.
+- **Never blocks the pointer.** Big folders are read in the background behind a small "Reading files…" chip.
 - **Extras are offered only when you need them.** The first conversion that needs FFmpeg explains what it is and how big it is, then downloads it and carries on with your conversion. There's no separate setup step.
 - **Every pill says what the format is for.** Hovering a pill shows a one-line description in the footer (for example "Apple photos · very small" or "HDR · VFX pipelines"), so you don't need to know every format.
 - **Your files are safe.** The original is never touched. Output never overwrites an existing file: it becomes `photo 2.png`, the same way Finder names copies. Files are written to a temporary location first and moved into place when complete.

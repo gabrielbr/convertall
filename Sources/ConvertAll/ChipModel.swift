@@ -221,11 +221,14 @@ final class ChipModel: ObservableObject {
     var fileCount: Int { files.count }
     var matches: [ChipAction] {
         guard !query.isEmpty else { return actions }
-        return actions.enumerated()
-            .map { ($1, $1.score(query), $0) }
-            .filter { $0.1 > 0 }
-            .sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.2 < $1.2 }
-            .map(\.0)
+        struct Scored { let action: ChipAction; let score: Int; let index: Int }
+        var scored: [Scored] = []
+        for (index, action) in actions.enumerated() {
+            let score = action.score(query)
+            if score > 0 { scored.append(Scored(action: action, score: score, index: index)) }
+        }
+        scored.sort { (a: Scored, b: Scored) -> Bool in a.score != b.score ? a.score > b.score : a.index < b.index }
+        return scored.map { $0.action }
     }
     func isMatch(_ action: ChipAction) -> Bool { query.isEmpty || action.score(query) > 0 }
 

@@ -12,6 +12,7 @@ struct ChipView: View {
     @ObservedObject var model: ChipModel
     @FocusState private var searchFocused: Bool
     @State private var appeared = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -30,12 +31,14 @@ struct ChipView: View {
             RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
         )
-        .scaleEffect(appeared ? 1 : 0.92, anchor: model.anchor)
+        .scaleEffect(appeared || reduceMotion ? 1 : 0.92, anchor: model.anchor)
         .opacity(appeared ? 1 : 0)
         .onAppear {
-            withAnimation(.spring(response: 0.26, dampingFraction: 0.78)) { appeared = true }
+            withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.26, dampingFraction: 0.78)) { appeared = true }
             searchFocused = true
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("ConvertAll")
         .onHover { model.isHovering = $0 }
     }
 
@@ -65,23 +68,24 @@ struct ChipView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(model.title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.headline)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text(model.subtitle)
-                    .font(.system(size: 11))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
             Button { model.onClose() } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 15))
+                    .font(.title3)
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .help("Close  (esc)")
+            .help("Close (Esc)")
+            .accessibilityLabel("Close")
         }
     }
 
@@ -94,11 +98,11 @@ struct ChipView: View {
                 ForEach(model.sections) { section in
                     VStack(alignment: .leading, spacing: 4) {
                         if model.sections.count > 1 {
-                            Text(section.title.uppercased())
-                                .font(.system(size: 9.5, weight: .semibold))
-                                .tracking(0.6)
-                                .foregroundStyle(.tertiary)
+                            Text(section.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.secondary)
                                 .padding(.leading, 2)
+                                .accessibilityAddTraits(.isHeader)
                         }
                         LazyVGrid(
                             columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: ChipModel.columns),
@@ -111,11 +115,13 @@ struct ChipView: View {
                                     isHighlighted: model.highlighted == action,
                                     isMatch: model.isMatch(action),
                                     needsDownload: requirement != .ready,
-                                    hint: hint(for: action, requirement)
+                                    hint: hint(for: action, requirement),
+                                    reduceMotion: reduceMotion
                                 ) {
                                     model.run(action)
-                                } onHover: {
-                                    model.highlighted = action
+                                } onHover: { inside in
+                                    // Hover only previews (the footnote); the keyboard selection stays put.
+                                    if inside { model.hovered = action } else if model.hovered == action { model.hovered = nil }
                                 }
                             }
                         }
@@ -126,7 +132,7 @@ struct ChipView: View {
             Divider().opacity(0.6)
             HStack(spacing: 6) {
                 Text(model.footnote)
-                    .font(.system(size: 11))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .animation(nil, value: model.highlighted)
@@ -134,7 +140,7 @@ struct ChipView: View {
                 if let update = model.update {
                     Button { model.installUpdate() } label: {
                         Label("Update to \(update.version.description)", systemImage: "arrow.down.circle.fill")
-                            .font(.system(size: 10.5, weight: .semibold))
+                            .font(.subheadline.weight(.semibold))
                             .padding(.horizontal, 7)
                             .padding(.vertical, 2)
                             .background(Capsule().fill(Color.accentColor.opacity(0.15)))
@@ -161,18 +167,22 @@ struct ChipView: View {
 
     private var searchField: some View {
         HStack(spacing: 6) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 11, weight: .semibold))
+            Image(systemName: "magnifyingglass")
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
-            TextField("Convert to…  type a format", text: $model.query)
+                .accessibilityHidden(true)
+            TextField("Convert to… (type a format)", text: $model.query)
                 .textFieldStyle(.plain)
-                .font(.system(size: 13))
+                .font(.body)
                 .focused($searchFocused)
+                .accessibilityLabel("Search formats")
             if !model.query.isEmpty {
                 Button { model.query = "" } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .help("Clear search")
+                .accessibilityLabel("Clear search")
             }
         }
         .padding(.horizontal, 9)
@@ -313,8 +323,9 @@ private struct FormatPill: View {
     let isMatch: Bool
     let needsDownload: Bool
     let hint: String
+    let reduceMotion: Bool
     let action: () -> Void
-    let onHover: () -> Void
+    let onHover: (Bool) -> Void
 
     @State private var hovering = false
 
@@ -322,10 +333,10 @@ private struct FormatPill: View {
         Button(action: action) {
             HStack(spacing: 3) {
                 Text(label)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(.callout, design: .rounded).weight(.semibold))
                 if needsDownload {
                     Image(systemName: "arrow.down.circle")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.footnote.weight(.semibold))
                         .opacity(0.7)
                 }
             }
@@ -337,19 +348,27 @@ private struct FormatPill: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5)
+                    .strokeBorder(Color.primary.opacity(hovering && !isHighlighted ? 0.25 : 0.07), lineWidth: hovering ? 1 : 0.5)
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(PressableStyle())
-        .opacity(isMatch ? 1 : 0.25)
+        .buttonStyle(PressableStyle(reduceMotion: reduceMotion))
+        // Non-matches fade but keep their place (the grid never reshuffles); they're out of
+        // reach for clicks, keyboard and VoiceOver until the search matches them again.
+        .opacity(isMatch ? 1 : 0.35)
+        .allowsHitTesting(isMatch)
+        .accessibilityHidden(!isMatch)
         .animation(.easeOut(duration: 0.12), value: isHighlighted)
         .animation(.easeOut(duration: 0.12), value: isMatch)
         .onHover { inside in
             hovering = inside
-            if inside { onHover() }
+            onHover(inside)
         }
         .help(hint)
+        .accessibilityLabel(label)
+        .accessibilityValue(needsDownload ? "needs a one-time download" : "")
+        .accessibilityHint(hint)
+        .accessibilityAddTraits(isHighlighted ? .isSelected : [])
     }
 }
 
@@ -367,17 +386,19 @@ private struct OptionsStrip: View {
                     }
                 }
             } label: {
-                Label(model.options.quality.title, systemImage: "dial.medium")
+                Text(model.options.quality.title)
             }
             .help("Quality: smaller files or better fidelity")
+            .accessibilityLabel("Quality: \(model.options.quality.title)")
 
             Menu {
                 Section("Dimensions") { sizeItems(ConversionOptions.Size.presets) }
                 Section("File size") { sizeItems(ConversionOptions.Size.targetPresets) }
             } label: {
-                Label(model.options.size.shortTitle, systemImage: "arrow.down.right.and.arrow.up.left")
+                Text(model.options.size.shortTitle)
             }
             .help("Resize, or aim for a maximum file size")
+            .accessibilityLabel("Size: \(model.options.size.title)")
 
             Toggle(isOn: $model.options.stripMetadata) {
                 Label("No metadata", systemImage: model.options.stripMetadata ? "eye.slash.fill" : "eye.slash")
@@ -385,6 +406,7 @@ private struct OptionsStrip: View {
             }
             .toggleStyle(.button)
             .help(model.options.stripMetadata ? "Metadata will be removed (location, camera, author)" : "Remove location, camera and author details from the result")
+            .accessibilityLabel("Remove metadata")
 
             Menu {
                 Button { model.options.saveTo = nil } label: { check(model.options.saveTo == nil, "Next to the Original") }
@@ -401,6 +423,7 @@ private struct OptionsStrip: View {
                 Label(model.options.saveTo.map { ($0 as NSString).lastPathComponent } ?? "Beside", systemImage: "folder")
             }
             .help("Where converted files are saved")
+            .accessibilityLabel("Save to: \(model.options.saveTo.map { ($0 as NSString).lastPathComponent } ?? "next to the original")")
 
             if model.canTrim {
                 Button { model.beginTrim() } label: {
@@ -421,9 +444,9 @@ private struct OptionsStrip: View {
             }
         }
         .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .menuIndicator(.visible)  // they're menus: show it
         .controlSize(.small)
-        .font(.system(size: 11))
+        .font(.subheadline)
         .labelStyle(.titleAndIcon)
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -459,7 +482,7 @@ private struct TrimPanel: View {
         let duration = model.mediaDuration ?? 1
         let range = model.trim ?? 0...duration
         VStack(spacing: 12) {
-            Text("Trim").font(.system(size: 13, weight: .semibold))
+            Text("Trim").font(.headline).accessibilityAddTraits(.isHeader)
             RangeSlider(range: Binding(get: { range }, set: { model.trim = $0 }), bounds: 0...duration)
                 .frame(height: 28)
                 .padding(.horizontal, 6)
@@ -470,7 +493,7 @@ private struct TrimPanel: View {
                 Spacer()
                 Text(ChipModel.time(range.upperBound))
             }
-            .font(.system(size: 11).monospacedDigit())
+            .font(.subheadline.monospacedDigit())
             HStack(spacing: 8) {
                 Button("Reset") { model.endTrim(keep: false) }
                 Button("Done") { model.endTrim(keep: true) }.keyboardShortcut(.defaultAction)
@@ -536,7 +559,7 @@ private struct ProgressPanel: View {
         VStack(spacing: 10) {
             HStack(spacing: 8) {
                 if progress <= 0 { ProgressView().controlSize(.small) }
-                Text(title).font(.system(size: 13, weight: .medium))
+                Text(title).font(.body.weight(.medium))
             }
             if progress > 0 {
                 ProgressView(value: progress)
@@ -551,7 +574,7 @@ private struct ProgressPanel: View {
                     Text(detail)
                 }
             }
-            .font(.system(size: 11))
+            .font(.subheadline)
             .foregroundStyle(.secondary)
             .lineLimit(2)
             .multilineTextAlignment(.center)
@@ -568,9 +591,12 @@ private struct ProgressPanel: View {
 }
 
 private struct PressableStyle: ButtonStyle {
+    var reduceMotion = false
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.95 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.95 : 1)
+            .opacity(configuration.isPressed && reduceMotion ? 0.7 : 1)
             .animation(.spring(response: 0.2, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
@@ -582,13 +608,14 @@ private struct KeyHint: View {
     var body: some View {
         HStack(spacing: 3) {
             Text(symbol)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .font(.system(.subheadline, design: .rounded).weight(.semibold))
                 .padding(.horizontal, 4)
                 .padding(.vertical, 1)
                 .background(RoundedRectangle(cornerRadius: 4).fill(Color.primary.opacity(0.08)))
-            Text(label).font(.system(size: 10))
+            Text(label).font(.subheadline)
         }
         .foregroundStyle(.secondary)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -599,21 +626,23 @@ private struct ResultMessage<Actions: View>: View {
     let detail: String
     @ViewBuilder let actions: () -> Actions
     @State private var popped = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 8) {
             Image(systemName: symbol)
-                .font(.system(size: 30))
+                .font(.largeTitle)
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(tint)
-                .scaleEffect(popped ? 1 : 0.4)
+                .scaleEffect(popped || reduceMotion ? 1 : 0.4)
                 .opacity(popped ? 1 : 0)
+                .accessibilityHidden(true)
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.headline)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Text(detail)
-                .font(.system(size: 11))
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
@@ -625,7 +654,7 @@ private struct ResultMessage<Actions: View>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .transition(.opacity.combined(with: .scale(scale: 0.97)))
         .onAppear {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.6).delay(0.05)) { popped = true }
+            withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.35, dampingFraction: 0.6).delay(0.05)) { popped = true }
         }
     }
 }

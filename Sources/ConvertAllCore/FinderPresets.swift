@@ -74,7 +74,7 @@ public enum FinderPresets {
         case "compress-same":
             guard let f = singleFormat, ConversionMatrix.compressible.contains(f) else { return nil }
             return "Make Smaller"
-        case "combine-pdf": return fileCount > 1 ? "Combine into One PDF" : "→ PDF"
+        case "combine-pdf": return fileCount > 1 ? "Combine into One PDF" : "Convert to PDF"
         case "combine-mp4": return fileCount > 1 ? "Join into One MP4" : nil
         case "extract-text": return "Extract Text"
         case "remove-background": return "Remove Background"
@@ -82,14 +82,14 @@ public enum FinderPresets {
             guard id.hasPrefix("convert-"), let f = FileFormat(rawValue: String(id.dropFirst(8))) else { return nil }
             if f == singleFormat { return nil }
             let pages = singleFormat.map { $0.category != .image && $0.category != .video && f.category == .image } ?? false
-            return "→ \(f.displayName)" + (pages ? " (pages)" : f == .mp3 && singleFormat?.category == .video ? " (audio)" : "")
+            return "Convert to \(f.displayName)" + (pages ? " (pages)" : f == .mp3 && singleFormat?.category == .video ? " (audio)" : "")
         }
     }
 
     /// The submenu items (title, preset id) for a selection, using the user's configuration.
     public static func items(for urls: [URL], isFolder: Bool, config: Config?) -> [(title: String, id: String)] {
         if isFolder {
-            return [("All Images → JPEG", "convert-jpeg"), ("All Images → PNG", "convert-png"), ("All Videos → MP4", "convert-mp4")]
+            return [("Convert All Images to JPEG", "convert-jpeg"), ("Convert All Images to PNG", "convert-png"), ("Convert All Videos to MP4", "convert-mp4")]
         }
         let formats = urls.compactMap { FileFormat(url: $0) }
         guard formats.count == urls.count, let first = formats.first, let kind = kind(of: first),

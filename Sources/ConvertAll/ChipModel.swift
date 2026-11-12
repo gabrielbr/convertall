@@ -46,6 +46,8 @@ final class ChipModel: ObservableObject {
         didSet { if let best = matches.first { highlighted = best } }
     }
     @Published var highlighted: ChipAction?
+    /// What the pointer is over: previews its description, never changes the selection.
+    @Published var hovered: ChipAction?
     @Published private(set) var phase: Phase = .picking
     @Published var thumbnail: NSImage
     @Published private(set) var update: AvailableUpdate?
@@ -82,18 +84,50 @@ final class ChipModel: ObservableObject {
 
     var onClose: () -> Void = {}
 
-    init(files selection: [URL]) {
-        // Folders become the convertible files inside them; loose files without a known
-        // extension are identified by content.
-        var found = FolderScanner.expand(selection)
-        var formats = found.compactMap(FileFormat.init(url:))
-        for url in selection where !found.contains(url) && !FolderScanner.containsFolder([url]) {
-            if let f = Converter.sourceFormat(of: url) { found.append(url); formats.append(f) }
+    /// Everything about a selection that touches the disk: folders expanded, formats and
+    /// sizes read. Built off the main thread (`ChipController` shows "Reading…" meanwhile).
+    struct Selection: Sendable {
+        let urls: [URL]
+        let files: [URL]
+        let sources: [FileFormat]
+        let animated: [Bool]
+        let fileBytes: [Int64]
+
+        static func load(_ selection: [URL]) -> Selection {
+            // Folders become the convertible files inside them; loose files without a known
+            // extension are identified by content.
+            var found = FolderScanner.expand(selection)
+            var formats = found.compactMap(FileFormat.init(url:))
+            for url in selection where !found.contains(url) && !FolderScanner.containsFolder([url]) {
+                if let f = Converter.sourceFormat(of: url) { found.append(url); formats.append(f) }
+            }
+            // Opening every image to look for animation is costly; it only changes the menu
+            // for a single file (an animated image can also become video).
+            let animated = found.count == 1
+                ? zip(found, formats).map { Converter.isAnimated($0, format: $1) }
+                : Array(repeating: false, count: found.count)
+            return Selection(urls: selection, files: found, sources: formats, animated: animated,
+                             fileBytes: found.map { Int64(ImageConverter.fileSize($0)) })
         }
+
+        /// Big enough that reading it should happen behind a "Reading…" chip.
+        static func isHeavy(_ selection: [URL]) -> Bool {
+            selection.count > 20 || FolderScanner.containsFolder(selection)
+        }
+    }
+
+    convenience init(files selection: [URL]) {
+        self.init(loaded: .load(selection))
+    }
+
+    init(loaded: Selection) {
+        let selection = loaded.urls
+        let found = loaded.files
+        let formats = loaded.sources
         files = found
         sources = formats
-        animated = zip(found, formats).map { Converter.isAnimated($0, format: $1) }
-        fileBytes = found.map { Int64(ImageConverter.fileSize($0)) }
+        animated = loaded.animated
+        fileBytes = loaded.fileBytes
         thumbnailSource = selection.first
 
         // Sections: Make smaller · Combine · regular targets (shared by every file, or — for
@@ -207,32 +241,44 @@ final class ChipModel: ObservableObject {
     func blurb(_ action: ChipAction) -> String { action.blurb(fileCount: files.count) }
 
     private func applies(_ action: ChipAction, to i: Int) -> Bool {
+        Self.applies(action, source: sources[i], animated: animated[i])
+    }
+
+    private static func applies(_ action: ChipAction, source: FileFormat, animated: Bool) -> Bool {
         switch action {
-        case .convert(let f): ConversionMatrix.targets(for: sources[i]).contains(f) || (animated[i] && f.category == .video)
-        case .compress(let f): sources[i] == f
+        case .convert(let f): ConversionMatrix.targets(for: source).contains(f) || (animated && f.category == .video)
+        case .compress(let f): source == f
         case .combine: true
-        case .extractText: sources[i].category == .image
-        case .removeBackground: sources[i].category == .image && !animated[i]
+        case .extractText: source.category == .image
+        case .removeBackground: source.category == .image && !animated
         }
     }
+
+    /// Distinct kinds of file in the selection: 1,000 JPEGs are one kind.
+    private struct Kind: Hashable { let source: FileFormat; let animated: Bool }
+    private lazy var kinds: [Kind] = Array(Set(zip(sources, animated).map { Kind(source: $0, animated: $1) }))
+    /// Requirements are checked on disk (is FFmpeg/LibreOffice there?), so they're cached per
+    /// chip instead of re-checked on every redraw; cleared after an engine install.
+    private var requirementCache: [ChipAction: Requirement] = [:]
 
     /// The strictest requirement across the files the action applies to.
     func requirement(for action: ChipAction) -> Requirement {
+        if let cached = requirementCache[action] { return cached }
+        let result: Requirement
         switch action {
-        case .combine(let f): return f == .pdf || MediaEngine.ffmpegURL != nil ? .ready : .mediaEngine
-        case .extractText, .removeBackground: return .ready
-        default: break
+        case .combine(let f): result = f == .pdf || MediaEngine.ffmpegURL != nil ? .ready : .mediaEngine
+        case .extractText, .removeBackground: result = .ready
+        default:
+            let all = kinds.filter { Self.applies(action, source: $0.source, animated: $0.animated) }
+                .map { Converter.requirement(from: $0.source, to: action.format, animated: $0.animated) }
+            result = all.contains(.libreOffice) ? .libreOffice : all.contains(.mediaEngine) ? .mediaEngine : .ready
         }
-        let all = files.indices.filter { applies(action, to: $0) }.map {
-            Converter.requirement(from: sources[$0], to: action.format, animated: animated[$0])
-        }
-        if all.contains(.libreOffice) { return .libreOffice }
-        if all.contains(.mediaEngine) { return .mediaEngine }
-        return .ready
+        requirementCache[action] = result
+        return result
     }
 
     var footnote: String {
-        guard let a = highlighted else { return "" }
+        guard let a = hovered ?? highlighted else { return "" }
         var text = blurb(a)
         if let trim, canTrim(a) { text = "\(Self.time(trim.lowerBound))–\(Self.time(trim.upperBound)) · " + text }
         switch requirement(for: a) {
@@ -270,7 +316,9 @@ final class ChipModel: ObservableObject {
         highlighted = action
         switch requirement(for: action) {
         case .ready: start(action, reveal: reveal)
-        case let need: withAnimation(.easeOut(duration: 0.15)) { phase = .needs(action, need) }
+        case let need:
+            withAnimation(.easeOut(duration: 0.15)) { phase = .needs(action, need) }
+            announce("\(label(action)) needs a one-time download. Press Return to download and continue.")
         }
     }
 
@@ -285,6 +333,7 @@ final class ChipModel: ObservableObject {
         Task { @MainActor in
             do {
                 if need == .libreOffice { try await OfficePack.install(progress: report) } else { try await MediaPack.install(progress: report) }
+                requirementCache = [:]
                 phase = .picking
                 run(action)
             } catch {
@@ -401,6 +450,15 @@ final class ChipModel: ObservableObject {
         slotProgress = Array(repeating: 0, count: tasks.count)
         completed = 0
         phase = .converting(action, progress: 0, done: 0, total: tasks.count)
+        announce("\(action.verb)…")
+    }
+
+    /// Speaks to VoiceOver users: the chip changes without focus moving, so nothing else would.
+    func announce(_ text: String) {
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [
+            .announcement: text,
+            .priority: NSAccessibilityPriorityLevel.high.rawValue,
+        ])
     }
 
     private func report(_ action: ChipAction, slot: Int, progress: Double) {
@@ -423,6 +481,12 @@ final class ChipModel: ObservableObject {
             ratio: after > 0 && before > 0 ? 1 - Double(after) / Double(before) : nil)
         withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
             phase = .finished(action, outputs: outputs, failures: failures, skipped: skipped)
+        }
+        if outputs.isEmpty {
+            announce("Couldn't finish. \(failures.first ?? "")")
+        } else {
+            let what = outputs.count == 1 ? "Saved \(outputs[0].lastPathComponent)" : "\(outputs.count) files saved"
+            announce([what, failures.isEmpty ? nil : "\(failures.count) failed", savingsText].compactMap { $0 }.joined(separator: ". "))
         }
         let tookLong = Date().timeIntervalSince(started) > 4
         if !outputs.isEmpty {
@@ -573,15 +637,14 @@ final class ChipModel: ObservableObject {
             default: break
             }
             return true
-        case 123, 124, 125, 126, 48:
-            guard phase == .picking else { return phase != .trimming }
-            switch event.keyCode {
-            case 123: move(dx: -1, dy: 0)
-            case 124: move(dx: 1, dy: 0)
-            case 125: move(dx: 0, dy: 1)
-            case 126: move(dx: 0, dy: -1)
-            default: move(dx: event.modifierFlags.contains(.shift) ? -1 : 1, dy: 0)
-            }
+        case 123, 124:
+            // ←/→ edit the search text when there is some; on an empty field they walk the grid.
+            guard phase == .picking, query.isEmpty else { return false }
+            move(dx: event.keyCode == 123 ? -1 : 1, dy: 0)
+            return true
+        case 125, 126:
+            guard phase == .picking else { return false }
+            move(dx: 0, dy: event.keyCode == 125 ? 1 : -1)
             return true
         default: break
         }
@@ -622,7 +685,8 @@ final class ChipModel: ObservableObject {
         autoCloseTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard let self, !Task.isCancelled else { return }
-            if self.isHovering { self.autoCloseDeferred = true } else { self.onClose() }
+            // VoiceOver users need time to hear the result; they close the chip themselves.
+            if self.isHovering || NSWorkspace.shared.isVoiceOverEnabled { self.autoCloseDeferred = true } else { self.onClose() }
         }
     }
 

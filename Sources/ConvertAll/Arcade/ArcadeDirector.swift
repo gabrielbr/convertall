@@ -175,7 +175,15 @@ enum ArcadeAssets {
     static var imageURL: URL? { find("popin") }
     static var soundURL: URL? { find("sound") }
 
-    static var image: NSImage? { imageURL.flatMap(NSImage.init(contentsOf:)) }
+    /// Decoded once and kept: the pop-in can show after every conversion in a batch.
+    static var image: NSImage? {
+        if let cachedImage { return cachedImage.image }
+        let loaded = imageURL.flatMap(NSImage.init(contentsOf:))
+        cachedImage = CachedImage(image: loaded)
+        return loaded
+    }
+    private struct CachedImage { let image: NSImage? }
+    private static var cachedImage: CachedImage?
 
     static func importImage(from url: URL) throws { try store(url, as: "popin") }
     static func importSound(from url: URL) throws { try store(url, as: "sound") }
@@ -188,12 +196,14 @@ enum ArcadeAssets {
     }
 
     private static func store(_ source: URL, as name: String) throws {
+        cachedImage = nil
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         remove(name)
         try FileManager.default.copyItem(at: source, to: folder.appendingPathComponent(name).appendingPathExtension(source.pathExtension))
     }
 
     private static func remove(_ name: String) {
+        cachedImage = nil
         while let existing = find(name) { try? FileManager.default.removeItem(at: existing) }
     }
 

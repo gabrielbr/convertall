@@ -47,8 +47,43 @@ final class ChipController {
     ///   - actionID: start this action right away (Finder menu presets), e.g. "convert-png".
     func present(_ urls: [URL], at point: NSPoint = NSEvent.mouseLocation, clipboard: Bool = false, run actionID: String? = nil) {
         close(animated: false)
+        guard ChipModel.Selection.isHeavy(urls) else {
+            show(.load(urls), at: point, clipboard: clipboard, run: actionID)
+            return
+        }
+        // Big folders take a moment to scan: show that something is happening right away,
+        // and read the files off the main thread so the pointer never beach-balls.
+        let token = UUID()
+        loadingToken = token
+        showLoading(at: point)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let loaded = ChipModel.Selection.load(urls)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.loadingToken == token else { return }
+                self.show(loaded, at: point, clipboard: clipboard, run: actionID)
+            }
+        }
+    }
 
-        let model = ChipModel(files: urls)
+    /// Identifies the selection being read, so a newer `present` or a close discards it.
+    private var loadingToken: UUID?
+
+    private func showLoading(at point: NSPoint) {
+        let hosting = NSHostingView(rootView: ReadingChip())
+        let size = hosting.fittingSize
+        let panel = ChipPanel(contentRect: placement(for: size, near: point).0)
+        hosting.frame = NSRect(origin: .zero, size: size)
+        panel.contentView = hosting
+        self.panel = panel
+        panel.orderFrontRegardless()
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [
+            .announcement: "Reading files…", .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+        ])
+    }
+
+    private func show(_ loaded: ChipModel.Selection, at point: NSPoint, clipboard: Bool, run actionID: String?) {
+        close(animated: false)
+        let model = ChipModel(loaded: loaded)
         model.clipboardMode = clipboard
         let hosting = NSHostingView(rootView: ChipView(model: model))
         let size = hosting.fittingSize
@@ -86,6 +121,7 @@ final class ChipController {
     }
 
     func close(animated: Bool = true) {
+        loadingToken = nil
         guard let panel else { return }
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
@@ -119,6 +155,19 @@ final class ChipController {
         x = min(max(x, bounds.minX + 4), bounds.maxX - size.width - 4)
         y = min(max(y, bounds.minY + 4), bounds.maxY - size.height - 4)
         return (NSRect(origin: NSPoint(x: x, y: y), size: size), UnitPoint(x: anchorX, y: anchorY))
+    }
+}
+
+/// Placeholder shown while a big selection is being read.
+private struct ReadingChip: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text("Reading files…").font(.callout)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 #endif

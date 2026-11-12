@@ -57,7 +57,7 @@ private struct WelcomeView: View {
                     .resizable()
                     .frame(width: 72, height: 72)
                 Text("ConvertAll")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .font(.system(.title2, design: .rounded).weight(.bold))
                 Text("Images, video, audio and documents — converted in two clicks.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -83,7 +83,7 @@ private struct WelcomeView: View {
                 Spacer()
                 updateStatus
             }
-            .font(.system(size: 11))
+            .font(.footnote)
         }
         .padding(.horizontal, 28)
         .padding(.bottom, 20)
@@ -125,7 +125,7 @@ private struct WelcomeView: View {
                 }
             }
             if let error = extras.error {
-                Text(error).font(.system(size: 11)).foregroundStyle(.red).padding(.bottom, 8)
+                Text(error).font(.footnote).foregroundStyle(.red).padding(.bottom, 8)
             }
         }
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.04)))
@@ -164,10 +164,10 @@ private struct WelcomeView: View {
     private var dropZone: some View {
         VStack(spacing: 8) {
             Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 26))
+                .font(.largeTitle)
                 .foregroundStyle(dropTargeted ? Color.accentColor : .secondary)
             Text("Drop files here to try it")
-                .font(.system(size: 13, weight: .medium))
+                .font(.body.weight(.medium))
             Button("Choose Files…", action: choose)
                 .controlSize(.small)
         }
@@ -280,17 +280,17 @@ private struct ExtraRow<Action: View>: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: symbol)
-                .font(.system(size: 15))
+                .font(.title3)
                 .foregroundStyle(Color.accentColor)
                 .frame(width: 20)
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 12, weight: .semibold))
-                Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(title).font(.callout.weight(.semibold))
+                Text(detail).font(.footnote).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
             if installed {
                 Label("Installed", systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 11))
+                    .font(.footnote)
                     .foregroundStyle(.green)
             } else {
                 action()
@@ -308,12 +308,12 @@ private struct Step: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text("\(number)")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(.system(.footnote, design: .rounded).weight(.bold))
                 .foregroundStyle(.white)
                 .frame(width: 20, height: 20)
                 .background(Circle().fill(Color.accentColor))
             Text(text)
-                .font(.system(size: 13))
+                .font(.body)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
